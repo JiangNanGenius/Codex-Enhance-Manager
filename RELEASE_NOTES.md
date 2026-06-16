@@ -1,5 +1,14 @@
 # Release Notes
 
+## v2.2.27 - 2026-06-17
+
+- Added a required user confirmation before the app closes an already-running Codex process during launch or injection setup.
+- The backend now returns a confirmation-required payload instead of silently killing Codex when `/api/codex/start` is called without confirmation.
+- The main Web UI, provider launch flows, sync launch flow, tray menu, floating monitor entry, and existing-instance launch action now share the same confirmation-and-retry behavior.
+- Confirmed launches send an explicit one-shot confirmation token before Codex is closed and restarted.
+- Verified with targeted Codex start API tests, desktop launch confirmation tests, Python compile checks, and JavaScript syntax checks. Full pytest was intentionally skipped because this environment has Codex-disruptive tests.
+- EXE: `71.34 MB`; SHA256: `456d5c5ab10fe3b2e6305e67e115aad92f503715cffde4a2ff4c7f68a26352f6`.
+
 ## v2.2.26 - 2026-06-17
 
 - Renamed the desktop app display name, window title, tray identity, shortcuts, startup defaults, and Codex provider label to `Codex Enhanced Manager`.

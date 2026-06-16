@@ -1015,7 +1015,30 @@ class CodexIntegrationApiTest(unittest.TestCase):
         self.assertTrue(start.call_args.kwargs["enable_cdp_injection"])
         self.assertEqual(start.call_args.kwargs["cdp_port"], 51236)
 
-    def test_start_codex_restarts_running_codex_before_injection(self):
+    def test_start_codex_requires_confirmation_before_closing_running_codex(self):
+        app = self._app()
+        with (
+            patch("app._run_sync_with_backup", return_value=({"success": True, "changed": False}, 200)) as sync_with_backup,
+            patch("app.is_codex_running", return_value=(True, [123, 456])) as running,
+            patch("app.kill_codex", return_value=(True, "closed")) as kill,
+            patch("app.start_codex", return_value=(True, "started")) as start,
+        ):
+            response = app.test_client().post("/api/codex/start", json={
+                "start_mode": "preserve_login_proxy",
+            })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertTrue(data["running_codex_confirmation_required"])
+        self.assertEqual(data["required_confirmation"], "KILL_RUNNING_CODEX")
+        self.assertEqual(data["running_pids"], [123, 456])
+        running.assert_called_once()
+        kill.assert_not_called()
+        start.assert_not_called()
+        sync_with_backup.assert_not_called()
+
+    def test_start_codex_restarts_running_codex_after_confirmation(self):
         app = self._app()
         with (
             patch("app._run_sync_with_backup", return_value=({"success": True, "changed": False}, 200)),
@@ -1026,6 +1049,8 @@ class CodexIntegrationApiTest(unittest.TestCase):
         ):
             response = app.test_client().post("/api/codex/start", json={
                 "start_mode": "preserve_login_proxy",
+                "confirm_kill_running_codex": True,
+                "running_codex_confirmation": "KILL_RUNNING_CODEX",
             })
 
         self.assertEqual(response.status_code, 200)
@@ -1036,6 +1061,29 @@ class CodexIntegrationApiTest(unittest.TestCase):
         running.assert_called_once()
         kill.assert_called_once_with(timeout=8)
         start.assert_called_once()
+
+    def test_async_start_codex_requires_confirmation_before_job_creation(self):
+        app = self._app()
+        with (
+            patch("app.is_codex_running", return_value=(True, [987])) as running,
+            patch("app.kill_codex", return_value=(True, "closed")) as kill,
+            patch("app.start_codex", return_value=(True, "started")) as start,
+        ):
+            response = app.test_client().post("/api/codex/start", json={
+                "start_mode": "preserve_login_proxy",
+                "async": True,
+            })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertFalse(data["success"])
+        self.assertTrue(data["async"])
+        self.assertTrue(data["running_codex_confirmation_required"])
+        self.assertEqual(data["running_pids"], [987])
+        self.assertNotIn("status_url", data)
+        running.assert_called_once()
+        kill.assert_not_called()
+        start.assert_not_called()
 
     def test_start_codex_backs_off_occupied_cdp_port(self):
         app = self._app()

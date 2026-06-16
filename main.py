@@ -87,7 +87,11 @@ LR_LOADFROMFILE = 0x00000010
 LR_DEFAULTSIZE = 0x00000040
 IDYES = 6
 IDNO = 7
+MB_YESNO = 0x00000004
+MB_ICONWARNING = 0x00000030
+MB_TOPMOST = 0x00040000
 LOCAL_API_TIMEOUT = 10
+RUNNING_CODEX_CONFIRMATION = "KILL_RUNNING_CODEX"
 PORT_SCAN_LIMIT = 30
 TRAY_MENU_TEXT = {
     "show_main": "显示主窗口",
@@ -318,9 +322,9 @@ def _desktop_backend_port_candidates() -> list[int]:
     return result
 
 
-def _request_existing_desktop_start_codex(port: int) -> dict:
+def _post_existing_desktop_start_codex(port: int, payload: dict) -> dict:
     try:
-        body = json.dumps({"start_mode": "current_focus", "async": True}).encode("utf-8")
+        body = json.dumps(payload or {}).encode("utf-8")
         request = urllib.request.Request(
             f"http://127.0.0.1:{int(port)}/api/codex/start",
             data=body,
@@ -333,6 +337,19 @@ def _request_existing_desktop_start_codex(port: int) -> dict:
             return data if isinstance(data, dict) else {"success": True}
     except Exception as exc:
         return {"success": False, "error": str(exc)}
+
+
+def _request_existing_desktop_start_codex(port: int) -> dict:
+    payload = {"start_mode": "current_focus", "async": True}
+    result = _post_existing_desktop_start_codex(port, payload)
+    if _codex_shutdown_confirmation_required(result):
+        if not _ask_running_codex_shutdown(result):
+            return {"success": False, "cancelled": True, "message": "已取消启动 Codex"}
+        result = _post_existing_desktop_start_codex(
+            port,
+            _with_running_codex_shutdown_confirmation(payload),
+        )
+    return result
 
 
 def _request_existing_desktop_action(action: str) -> bool:
@@ -701,6 +718,51 @@ def _local_post_json(path: str, payload: dict | None = None) -> dict:
         return {"success": False, "error": str(exc)}
 
 
+def _codex_shutdown_confirmation_required(result: dict | None) -> bool:
+    return bool(isinstance(result, dict) and result.get("running_codex_confirmation_required"))
+
+
+def _running_codex_pids_text(result: dict | None) -> str:
+    if not isinstance(result, dict):
+        return "-"
+    pids = result.get("running_pids")
+    if not isinstance(pids, list):
+        pids = result.get("pids")
+    if not isinstance(pids, list):
+        return "-"
+    return ", ".join(str(pid) for pid in pids) or "-"
+
+
+def _ask_running_codex_shutdown(result: dict | None) -> bool:
+    pids = _running_codex_pids_text(result)
+    message = f"检测到 Codex 桌面端已在运行（PID: {pids}）。\n是否关闭 Codex 并重新启动？"
+    if os.name == "nt":
+        try:
+            import ctypes
+            choice = ctypes.windll.user32.MessageBoxW(
+                0,
+                message,
+                APP_TITLE,
+                MB_YESNO | MB_ICONWARNING | MB_TOPMOST,
+            )
+            return choice == IDYES
+        except Exception:
+            pass
+    try:
+        if main_window is not None:
+            return bool(main_window.create_confirmation_dialog(APP_TITLE, message))
+    except Exception:
+        pass
+    return False
+
+
+def _with_running_codex_shutdown_confirmation(payload: dict) -> dict:
+    confirmed = dict(payload or {})
+    confirmed["confirm_kill_running_codex"] = True
+    confirmed["running_codex_confirmation"] = RUNNING_CODEX_CONFIRMATION
+    return confirmed
+
+
 def _provider_registry_for_desktop():
     from config import Config
     from providers import ProviderRegistry
@@ -764,7 +826,16 @@ def _set_focus_provider(provider_id: str = "") -> dict:
 
 def _start_codex_from_desktop() -> dict:
     def worker():
-        result = _local_post_json("/api/codex/start", {"start_mode": "current_focus"})
+        payload = {"start_mode": "current_focus"}
+        result = _local_post_json("/api/codex/start", payload)
+        if _codex_shutdown_confirmation_required(result):
+            if _ask_running_codex_shutdown(result):
+                result = _local_post_json(
+                    "/api/codex/start",
+                    _with_running_codex_shutdown_confirmation(payload),
+                )
+            else:
+                result = {"success": False, "cancelled": True, "message": "已取消启动 Codex"}
         try:
             if tray_icon is not None:
                 if result.get("success"):

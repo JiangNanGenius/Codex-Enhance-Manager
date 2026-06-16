@@ -127,6 +127,7 @@ def _asset_dir() -> Path:
 
 
 UNINSTALL_CLEANUP_CONFIRMATION = "UNINSTALL_CLEANUP"
+RUNNING_CODEX_CONFIRMATION = "KILL_RUNNING_CODEX"
 START_MODE_PROXY_INJECTION = "proxy_injection"
 START_MODE_PRESERVE_LOGIN_PROXY = "preserve_login_proxy"
 START_MODE_OFFICIAL_DIRECT = "official_direct"
@@ -213,6 +214,38 @@ def _coerce_bool(value: Any, default: bool = False) -> bool:
     if value is None:
         return default
     return bool(value)
+
+
+def _has_running_codex_shutdown_confirmation(body: Dict[str, Any]) -> bool:
+    """Require an explicit UI confirmation before closing a live Codex process."""
+    if not isinstance(body, dict):
+        return False
+    if not _coerce_bool(body.get("confirm_kill_running_codex"), False):
+        return False
+    return str(body.get("running_codex_confirmation") or "").strip() == RUNNING_CODEX_CONFIRMATION
+
+
+def _running_codex_confirmation_payload(pids: Any, *, async_requested: bool = False) -> Dict[str, Any]:
+    clean_pids = []
+    for pid in pids or []:
+        try:
+            clean_pids.append(int(pid))
+        except (TypeError, ValueError):
+            clean_pids.append(str(pid))
+    pid_text = ", ".join(str(pid) for pid in clean_pids) or "-"
+    return {
+        "success": False,
+        "async": bool(async_requested),
+        "requires_confirmation": True,
+        "confirmation_required": True,
+        "running_codex_confirmation_required": True,
+        "confirmation": RUNNING_CODEX_CONFIRMATION,
+        "required_confirmation": RUNNING_CODEX_CONFIRMATION,
+        "running_pids": clean_pids,
+        "pids": clean_pids,
+        "message": f"检测到 Codex 桌面端已在运行（PID: {pid_text}）。是否关闭并重新启动？",
+        "error": "检测到 Codex 正在运行，需要用户确认后才会关闭并继续启动。",
+    }
 
 
 def _coerce_port(value: Any, default: int = DEFAULT_CDP_PORT) -> int:
@@ -1936,20 +1969,23 @@ def create_app() -> Flask:
             or login_defaults["default_preserve_official_auth"],
         ))
         use_cpp = False if official_mode else body.get("use_codex_plus_plus", config.get("use_codex_plus_plus", False))
-        injection_settings = _resolve_codex_injection_settings(
-            config,
-            body,
-            use_codex_plus_plus=bool(use_cpp),
-            official_mode=official_mode,
-            persist=True,
-            avoid_occupied_port=True,
-        )
         _set_codex_start_progress(job_id, "codex_process_check", 8, "正在检查是否存在运行中的 Codex 进程...")
         try:
             running, pids = is_codex_running(timeout=1)
         except Exception:
             running, pids = False, []
         if running:
+            if not _has_running_codex_shutdown_confirmation(body):
+                result = _running_codex_confirmation_payload(pids, async_requested=_coerce_bool(body.get("async"), False))
+                _set_codex_start_progress(
+                    job_id,
+                    "awaiting_codex_shutdown_confirmation",
+                    100,
+                    result["message"],
+                    result=result,
+                    pids=pids,
+                )
+                return result
             _set_codex_start_progress(
                 job_id,
                 "restarting_codex",
@@ -1972,6 +2008,14 @@ def create_app() -> Flask:
                 }
                 _set_codex_start_progress(job_id, "restart_failed", 100, result["error"], result=result)
                 return result
+        injection_settings = _resolve_codex_injection_settings(
+            config,
+            body,
+            use_codex_plus_plus=bool(use_cpp),
+            official_mode=official_mode,
+            persist=True,
+            avoid_occupied_port=True,
+        )
         if _coerce_bool(config.get("codex_sandbox_auto_repair_enabled", False), False):
             _set_codex_start_progress(job_id, "sandbox_repair", 11, "正在修复 Codex sandbox/approval 配置...")
             sandbox_repair_payload = repair_codex_sandbox_permissions(mgr)
@@ -2094,6 +2138,14 @@ def create_app() -> Flask:
         return result
 
     def _start_codex_background_job(body: Dict[str, Any]) -> Dict[str, Any]:
+        if not _has_running_codex_shutdown_confirmation(body):
+            try:
+                running, pids = is_codex_running(timeout=1)
+            except Exception:
+                running, pids = False, []
+            if running:
+                return _running_codex_confirmation_payload(pids, async_requested=True)
+
         with codex_start_jobs_lock:
             _cleanup_codex_start_jobs()
             for existing_job in codex_start_jobs.values():

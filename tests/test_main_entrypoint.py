@@ -392,6 +392,24 @@ class MainEntrypointTest(unittest.TestCase):
         self.assertEqual(calls, [("codex-start-request", True)])
         post_json.assert_not_called()
 
+    def test_existing_desktop_start_codex_confirms_before_shutdown(self):
+        first = {
+            "success": False,
+            "running_codex_confirmation_required": True,
+            "running_pids": [123],
+        }
+        second = {"success": True, "message": "started"}
+        with patch.object(main, "_post_existing_desktop_start_codex", side_effect=[first, second]) as post_json, \
+                patch.object(main, "_ask_running_codex_shutdown", return_value=True) as ask:
+            result = main._request_existing_desktop_start_codex(51234)
+
+        self.assertEqual(result, second)
+        ask.assert_called_once_with(first)
+        self.assertEqual(post_json.call_count, 2)
+        confirmed_payload = post_json.call_args_list[1].args[1]
+        self.assertTrue(confirmed_payload["confirm_kill_running_codex"])
+        self.assertEqual(confirmed_payload["running_codex_confirmation"], "KILL_RUNNING_CODEX")
+
     def test_webview_started_respects_disabled_monitor_setting(self):
         with patch.object(main, "_monitor_auto_show_enabled", return_value=False), \
                 patch.object(main, "_show_monitor") as show_monitor:

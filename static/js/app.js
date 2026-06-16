@@ -207,6 +207,7 @@ function setStatus(text) {
 }
 
 let codexStartProgressHideTimer = null;
+const RUNNING_CODEX_CONFIRMATION = 'KILL_RUNNING_CODEX';
 
 function updateCodexStartProgressOverlay(job = {}) {
     let overlay = document.getElementById('codex-start-progress-overlay');
@@ -252,19 +253,17 @@ function hideCodexStartProgressOverlay(delay = 0) {
     }, delay);
 }
 
+function isRunningCodexConfirmationRequired(data) {
+    return Boolean(data && data.running_codex_confirmation_required);
+}
+
+function confirmRunningCodexShutdown(data = {}) {
+    const pids = Array.isArray(data.running_pids) ? data.running_pids : (Array.isArray(data.pids) ? data.pids : []);
+    return confirm(t('confirmRestartRunningCodex', { pids: pids.length ? pids.join(', ') : '-' }));
+}
+
 async function startCodexFromQuickAction() {
     try {
-        const status = await api('/api/codex/status');
-        if (status && status.running) {
-            const pids = Array.isArray(status.pids) ? status.pids.join(', ') : '';
-            if (!confirm(t('confirmRestartRunningCodex', { pids: pids || '-' }))) {
-                setStatus(t('codexStartCancelled'));
-                return;
-            }
-            setStatus(t('codexRestartRequested'));
-            await api('/api/codex/kill', { method: 'POST' });
-            await new Promise(resolve => setTimeout(resolve, 1200));
-        }
         setStatus(t('codexStartRequested'));
         const data = await startCodexWithProgress({ start_mode: 'current_focus' });
         const ok = !data || data.success !== false;
@@ -279,11 +278,28 @@ async function startCodexFromQuickAction() {
 
 async function startCodexWithProgress(payload = {}, options = {}) {
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const requestStart = (startPayload) => api('/api/codex/start', {
+        method: 'POST',
+        body: JSON.stringify({ ...startPayload, async: true }),
+    });
+    const retryWithConfirmation = async (confirmationPayload) => {
+        if (payload.confirm_kill_running_codex || !confirmRunningCodexShutdown(confirmationPayload)) {
+            setStatus(t('codexStartCancelled'));
+            hideCodexStartProgressOverlay(2500);
+            return { success: false, cancelled: true, message: t('codexStartCancelled') };
+        }
+        setStatus(t('codexRestartRequested'));
+        return startCodexWithProgress({
+            ...payload,
+            confirm_kill_running_codex: true,
+            running_codex_confirmation: RUNNING_CODEX_CONFIRMATION,
+        }, options);
+    };
     try {
-        const started = await api('/api/codex/start', {
-            method: 'POST',
-            body: JSON.stringify({ ...payload, async: true }),
-        });
+        const started = await requestStart(payload);
+        if (isRunningCodexConfirmationRequired(started)) {
+            return await retryWithConfirmation(started);
+        }
         let latest = started;
         updateCodexStartProgressOverlay(latest);
         if (onProgress) onProgress(latest);
@@ -302,11 +318,15 @@ async function startCodexWithProgress(payload = {}, options = {}) {
             if (onProgress) onProgress(latest);
             if (latest.status === 'complete' || latest.status === 'failed') {
                 hideCodexStartProgressOverlay(2500);
-                return latest.result || {
+                const result = latest.result || {
                     success: latest.status === 'complete',
                     message: latest.message,
                     error: latest.error,
                 };
+                if (isRunningCodexConfirmationRequired(result)) {
+                    return await retryWithConfirmation(result);
+                }
+                return result;
             }
         }
         hideCodexStartProgressOverlay(4000);
