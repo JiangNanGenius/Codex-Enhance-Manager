@@ -1,4 +1,5 @@
 import unittest
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 from codex_injector import _handle_bridge_request, _parse_ws_url, build_injection_script
@@ -26,6 +27,8 @@ class CodexInjectorTest(unittest.TestCase):
         self.assertIn("Chinese UI", script)
         self.assertIn("plugin_unlock_forced_off", script)
         self.assertIn("bridgeResult.data || bridgeResult", script)
+        self.assertIn("__cemBridgeTimeoutMs", script)
+        self.assertIn("trying HTTP fallback", script)
         self.assertIn("cemQuotaPercentLine", script)
         self.assertIn("__cemQuickSettingsInterval", script)
         self.assertIn("cemRefreshQuickSettingsQuietly", script)
@@ -77,6 +80,29 @@ class CodexInjectorTest(unittest.TestCase):
         self.assertEqual(request.full_url, "http://127.0.0.1:57321/api/codex-injection/status")
         self.assertTrue(result["success"])
         self.assertEqual(result["data"]["backend_url"], "http://127.0.0.1:57321")
+
+    def test_bridge_request_falls_back_to_desktop_backend_url(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b'{"success": true, "backend_url": "http://127.0.0.1:51234"}'
+
+        def fake_urlopen(request, timeout):
+            if request.full_url.startswith("http://127.0.0.1:51239/"):
+                raise urllib.error.URLError("connection refused")
+            return response
+
+        with patch(
+            "codex_injector._backend_url_candidates",
+            return_value=["http://127.0.0.1:51239", "http://127.0.0.1:51234"],
+        ), patch("codex_injector.urllib.request.urlopen", side_effect=fake_urlopen) as urlopen:
+            result = _handle_bridge_request(
+                {"path": "/api/codex-injection/quick-settings", "options": {"method": "GET"}},
+                backend_url="http://127.0.0.1:51239",
+            )
+
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"]["backend_url"], "http://127.0.0.1:51234")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,12 @@
 # Release Notes
 
+## v2.2.24 - 2026-06-17
+
+- Fixed the injected Usage Panel getting stuck on `Loading...` when the local bridge was stale or unavailable.
+- Added a bridge timeout and HTTP fallback so route, token, cost, context, and Fast Route Switch data can recover through the active desktop backend.
+- Re-registered the renderer bridge from the listener session and made bridge requests prefer the desktop backend state before falling back to default local ports.
+- Verified with targeted injection unit tests, generated injection JavaScript syntax check, stale-backend bridge simulation, local quick-settings API call, and local route-resolution check. Full pytest was intentionally skipped because this environment has Codex-disruptive tests.
+
 ## v2.2.23 - 2026-06-16
 
 - Fixed the native Token Monitor so it can still read local token/context data when the desktop HTTP URL is unavailable or stale.

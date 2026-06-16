@@ -12,6 +12,7 @@ import os
 import socket
 import struct
 import time
+import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
 
@@ -644,6 +645,39 @@ def backend_url_from_env(default_port: int = DEFAULT_BACKEND_PORT) -> str:
     except (TypeError, ValueError):
         port_int = default_port
     return f"http://127.0.0.1:{port_int}"
+
+
+def _normalize_backend_url(value: Any) -> str:
+    text = str(value or "").strip().rstrip("/")
+    if not text.startswith(("http://127.0.0.1:", "http://localhost:")):
+        return ""
+    return text
+
+
+def _desktop_backend_url_from_state() -> str:
+    try:
+        from app_paths import app_data_path
+
+        path = app_data_path("desktop_backend.json")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return _normalize_backend_url(data.get("url") or f"http://127.0.0.1:{int(data.get('port') or 0)}")
+    except Exception:
+        return ""
+
+
+def _backend_url_candidates(backend_url: str = "") -> List[str]:
+    candidates: List[str] = []
+
+    def add(value: Any) -> None:
+        cleaned = _normalize_backend_url(value)
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+
+    add(backend_url)
+    add(_desktop_backend_url_from_state())
+    add(backend_url_from_env())
+    add(f"http://127.0.0.1:{DEFAULT_BACKEND_PORT}")
+    return candidates
 
 
 def build_injection_script(backend_url: str = "") -> str:
@@ -1351,7 +1385,7 @@ def build_injection_script(backend_url: str = "") -> str:
     // Primary: use CDP bridge (bypasses CSP / network restrictions)
     if (typeof window.__cemBridge === 'function') {{
       try {{
-        const bridgeResult = await window.__cemBridge(path, options);
+        const bridgeResult = await window.__cemBridge(path, {{ ...options, __cemBridgeTimeoutMs: 1800 }});
         if (!bridgeResult || bridgeResult.success === false) {{
           const bridgeData = bridgeResult && bridgeResult.data;
           throw new Error(
@@ -1364,12 +1398,7 @@ def build_injection_script(backend_url: str = "") -> str:
         if (data && data.backend_url) cemSetBackend(data.backend_url);
         return data;
       }} catch (err) {{
-        const msg = String(err && err.message || err);
-        if (!msg.includes('Bridge binding not available')) {{
-          console.error('[CEM] Bridge error:', err);
-          throw err;
-        }}
-        // Bridge not available, fall through to network paths
+        console.warn('[CEM] Bridge unavailable, trying HTTP fallback:', err);
       }}
     }}
     // Fallback: direct HTTP to backend candidates
@@ -1796,10 +1825,28 @@ _CEM_BRIDGE_SCRIPT = r"""
       return;
     }
     const id = String(++window.__cemBridgeSeq);
-    window.__cemBridgeCallbacks.set(id, { resolve, reject });
+    const sourceOptions = options && typeof options === 'object' ? options : {};
+    const timeoutMs = Math.max(500, Number(sourceOptions.__cemBridgeTimeoutMs || 1800));
+    const bridgeOptions = { ...sourceOptions };
+    delete bridgeOptions.__cemBridgeTimeoutMs;
+    const timer = window.setTimeout(() => {
+      window.__cemBridgeCallbacks.delete(id);
+      reject(new Error('Backend bridge request timed out'));
+    }, timeoutMs);
+    window.__cemBridgeCallbacks.set(id, {
+      resolve: (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      reject: (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    });
     try {
-      window.__cemBridgeBinding(JSON.stringify({ id, path, options: options || {} }));
+      window.__cemBridgeBinding(JSON.stringify({ id, path, options: bridgeOptions || {} }));
     } catch (err) {
+      window.clearTimeout(timer);
       window.__cemBridgeCallbacks.delete(id);
       reject(err);
     }
@@ -1835,29 +1882,36 @@ def _handle_bridge_request(payload: Dict[str, Any], backend_url: str = "") -> Di
     """Handle a bridge request by calling the local Flask backend via HTTP."""
     path = payload.get("path", "")
     options = payload.get("options") or {}
-    backend = (backend_url or backend_url_from_env()).rstrip("/")
+    if not isinstance(path, str) or not path.startswith("/api/codex-injection/"):
+        return {"success": False, "error": "Unsupported bridge path"}
     method = str(options.get("method") or "GET").upper()
-    url = f"{backend}{path}"
     headers = {"Content-Type": "application/json"}
     body = options.get("body")
-    try:
-        req = urllib.request.Request(
-            url,
-            method=method,
-            headers=headers,
-            data=body.encode("utf-8") if body else None,
-        )
-        with urllib.request.urlopen(req, timeout=5.0) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="replace"))
-        return {"success": True, "data": data}
-    except urllib.error.HTTPError as e:
+    last_error = ""
+    for backend in _backend_url_candidates(backend_url):
+        url = f"{backend}{path}"
         try:
-            data = json.loads(e.read().decode("utf-8", errors="replace"))
-        except Exception:
-            data = {"error": str(e)}
-        return {"success": False, "status": e.code, "data": data}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+            req = urllib.request.Request(
+                url,
+                method=method,
+                headers=headers,
+                data=body.encode("utf-8") if body else None,
+            )
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            return {"success": True, "data": data}
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode("utf-8", errors="replace")
+            try:
+                data = json.loads(raw)
+            except Exception:
+                last_error = str(e)
+                continue
+            return {"success": False, "status": e.code, "data": data}
+        except Exception as e:
+            last_error = str(e)
+            continue
+    return {"success": False, "error": last_error or "Backend bridge request failed"}
 
 
 def run_cem_bridge_listener(ws_url: str, stop_event: threading.Event, backend_url: str = "") -> None:
@@ -1865,6 +1919,18 @@ def run_cem_bridge_listener(ws_url: str, stop_event: threading.Event, backend_ur
     client = _CdpWebSocket(ws_url)
     try:
         client.connect()
+        try:
+            client.call("Runtime.enable")
+        except Exception:
+            pass
+        try:
+            client.call("Runtime.addBinding", {"name": _CEM_BRIDGE_BINDING_NAME})
+        except Exception:
+            pass
+        try:
+            client.call("Runtime.evaluate", {"expression": _CEM_BRIDGE_SCRIPT, "awaitPromise": False, "allowUnsafeEvalBlockedByCSP": True})
+        except Exception:
+            pass
         while not stop_event.is_set():
             events = client.listen_for_events(timeout=0.5)
             for event in events:
