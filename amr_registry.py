@@ -425,6 +425,8 @@ class AMRRegistry:
                     image_candidates.append(candidate)
                 else:
                     candidates.append(candidate)
+                    if candidate["capabilities"].get("images"):
+                        image_candidates.append(copy.deepcopy(candidate))
 
         store = self._load_store()
         groups = store.setdefault("groups", [])

@@ -33,7 +33,7 @@ if not USER_DESKTOP_DIR.exists():
 EXE_NAME = "CodexHistoryManager.exe"
 RELEASE_MANIFEST_NAME = "release-manifest.json"
 LAST_COPIED_EXE: Path | None = None
-PYINSTALLER_RUNTIME_TMPDIR = r"%LOCALAPPDATA%\CodexEnhanceManager\pyi-runtime"
+PYINSTALLER_RUNTIME_TMPDIR_TEMPLATE = r"%LOCALAPPDATA%\CodexEnhanceManager\pyi-runtime"
 
 BUILD_DEPENDENCIES = [
     ("pyinstaller", "PyInstaller"),
@@ -194,6 +194,14 @@ def release_exe_path() -> Path:
     return OUTPUT_DIR / EXE_NAME
 
 
+def pyinstaller_runtime_tmpdir() -> Path:
+    """Return a concrete one-file extraction directory for this build."""
+    expanded = os.path.expandvars(PYINSTALLER_RUNTIME_TMPDIR_TEMPLATE)
+    if "%" in expanded:
+        expanded = str(Path.home() / "AppData" / "Local" / "CodexEnhanceManager" / "pyi-runtime")
+    return Path(expanded).expanduser().resolve()
+
+
 def sha256_file(path: Path) -> str:
     """Hash a release asset without loading the whole EXE into memory."""
     digest = hashlib.sha256()
@@ -258,6 +266,9 @@ def build():
     main_py = str(PROJECT_DIR / "main.py").replace("\\", "/")
     project_dir = str(PROJECT_DIR).replace("\\", "/")
     static_dir = str(PROJECT_DIR / "static").replace("\\", "/")
+    runtime_tmpdir = pyinstaller_runtime_tmpdir()
+    runtime_tmpdir.mkdir(parents=True, exist_ok=True)
+    runtime_tmpdir_spec = str(runtime_tmpdir).replace("\\", "\\\\")
 
     all_hiddenimports = STDLIB_IMPORTS + FLASK_IMPORTS + WEBVIEW_IMPORTS + TRAY_IMPORTS + LOCAL_MODULES
     hiddenimports_str = ",\n                   ".join([f'"{m}"' for m in all_hiddenimports])
@@ -323,7 +334,7 @@ exe = EXE(
     strip=False,
     upx=False,
     upx_exclude=[],
-    runtime_tmpdir="{PYINSTALLER_RUNTIME_TMPDIR}",
+    runtime_tmpdir="{runtime_tmpdir_spec}",
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -438,7 +449,7 @@ def smoke_test_exe(path: Path | None = None, timeout_seconds: int = 45):
         print(f"Smoke test failed: EXE does not exist: {target}")
         return False
 
-    runtime_tmpdir = Path(os.path.expandvars(PYINSTALLER_RUNTIME_TMPDIR))
+    runtime_tmpdir = pyinstaller_runtime_tmpdir()
     try:
         runtime_tmpdir.mkdir(parents=True, exist_ok=True)
     except Exception as e:

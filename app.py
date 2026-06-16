@@ -1482,28 +1482,35 @@ def create_app() -> Flask:
                 result.add((provider_id, model_id))
         return result
 
-    def _default_amr_group_has_valid_enabled_candidate(
+    def _default_amr_group_covers_routing_pairs(
         group: Dict[str, Any],
         routing_pairs: set[tuple[str, str]],
     ) -> bool:
-        candidates = group.get("candidates")
-        if not isinstance(candidates, list) or not candidates:
+        if not routing_pairs:
             return False
-        for candidate in candidates:
-            if not isinstance(candidate, dict):
+        candidate_pairs: set[tuple[str, str]] = set()
+        for list_name in ("candidates", "image_candidates"):
+            candidates = group.get(list_name)
+            if not isinstance(candidates, list):
                 continue
-            if candidate.get("enabled", True) is False:
-                continue
-            provider_id = str(candidate.get("provider_id") or "").strip()
-            model_id = str(candidate.get("model_id") or "").strip()
-            if not provider_id or not model_id:
-                continue
-            if (provider_id, model_id) in routing_pairs:
-                return True
-        return False
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                if candidate.get("enabled", True) is False:
+                    continue
+                provider_id = str(candidate.get("provider_id") or "").strip()
+                model_id = str(candidate.get("model_id") or "").strip()
+                if provider_id and model_id:
+                    candidate_pairs.add((provider_id, model_id))
+        if not candidate_pairs:
+            return False
+        for provider_id, model_id in routing_pairs:
+            if (provider_id, model_id) not in candidate_pairs:
+                return False
+        return True
 
     def _ensure_default_amr_group_from_providers() -> Optional[Dict[str, Any]]:
-        """Ensure default AMR group has at least one valid enabled candidate when routing providers exist."""
+        """Ensure the default AMR group covers the current provider routing pairs."""
         routing_pairs = _provider_routing_pairs()
         if not routing_pairs:
             return None
@@ -1523,7 +1530,7 @@ def create_app() -> Flask:
             None,
         )
 
-        if default_group and _default_amr_group_has_valid_enabled_candidate(default_group, routing_pairs):
+        if default_group and _default_amr_group_covers_routing_pairs(default_group, routing_pairs):
             return default_group
 
         try:
@@ -1902,7 +1909,11 @@ def create_app() -> Flask:
                     f"正在等待 Codex 启动与注入完成，已用时 {elapsed} 秒...",
                 )
         if thread.is_alive():
-            return False, "启动 Codex 超时。请检查 config.toml 是否含有 Codex 不支持字段，或先手动关闭残留 Codex 进程后重试。"
+            return False, (
+                f"启动 Codex 超时（等待 {int(timeout)} 秒）。"
+                "请检查 config.toml 是否含有 Codex 不支持字段、CDP 注入是否卡在 renderer 连接，"
+                "或先手动关闭残留 Codex 进程后重试。"
+            )
         return result.get("value") or (False, "启动 Codex 未返回结果")
 
     def _run_codex_start_flow(body: Dict[str, Any], job_id: str = "") -> Dict[str, Any]:
@@ -2046,6 +2057,7 @@ def create_app() -> Flask:
 
         _set_codex_start_progress(job_id, "prelaunch", 74, "正在准备启动 Codex 与增强注入...")
         _set_codex_start_progress(job_id, "launching", 82, "正在启动 Codex 并确认进程...")
+        launch_timeout_seconds = 55.0 if injection_settings["enabled"] and not use_cpp else 30.0
         ok, msg = _start_codex_with_timeout({
             "use_codex_plus_plus": use_cpp,
             "codex_plus_plus_path": config.get("codex_plus_plus_path", ""),
@@ -2053,7 +2065,7 @@ def create_app() -> Flask:
             "enable_cdp_injection": injection_settings["enabled"],
             "cdp_port": injection_settings["cdp_port"],
             "backend_url": body.get("_backend_url") or body.get("backend_url") or _current_backend_url(),
-        }, job_id=job_id)
+        }, job_id=job_id, timeout_seconds=launch_timeout_seconds)
         if ok:
             try:
                 config.set("codex_last_start_mode", start_mode)

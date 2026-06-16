@@ -1,5 +1,15 @@
 # Release Notes
 
+## v2.2.25 - 2026-06-17
+
+- Fixed stale Smart Routing data causing `No candidate supports required capabilities` when Codex requests custom tools or native Responses capabilities.
+- Rebuilds the default AMR group from the current provider store when the proxy sees stale or empty default candidates, then retries the route once.
+- Includes native text+image Responses models in AMR image candidates so image-capable native proxy requests can route correctly.
+- Increased the Codex launch wait window when CDP injection is enabled and improved timeout diagnostics for renderer connection stalls.
+- Hardened one-file EXE startup by writing a concrete PyInstaller extraction directory instead of an unexpanded environment-variable path.
+- Verified with targeted AMR/proxy tests, targeted Codex start/injection API tests, real-data isolated AMR route simulations, and packaged EXE smoke test. Full pytest was intentionally skipped because this environment has Codex-disruptive tests.
+- EXE: `71.33 MB`; SHA256: `47f206fa59dd217368a62caafd73a11e93d282d38013fd784296431f8e16ed22`.
+
 ## v2.2.24 - 2026-06-17
 
 - Fixed the injected Usage Panel getting stuck on `Loading...` when the local bridge was stale or unavailable.

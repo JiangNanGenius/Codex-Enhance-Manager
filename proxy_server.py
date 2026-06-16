@@ -87,8 +87,9 @@ from request_logs import (
     redact_secrets,
 )
 from request_capabilities import classify_request_capabilities
-from amr_registry import AMRRegistry, DEFAULT_STORE_PATH as DEFAULT_AMR_STORE_PATH
+from amr_registry import AMRRegistry, DEFAULT_GROUP_ID, DEFAULT_STORE_PATH as DEFAULT_AMR_STORE_PATH
 from provider_routing import provider_allows_local_routing
+from providers import ProviderRegistry
 from local_proxy_auth import local_proxy_token_fingerprint
 from model_catalog import UnifiedModelCatalog
 from reasoning_policy import (
@@ -406,6 +407,21 @@ def _get_amr_store_path() -> Path:
     return DEFAULT_AMR_STORE_PATH
 
 
+def _refresh_default_amr_group_from_provider_store() -> bool:
+    """Rebuild the default AMR group from the current provider store."""
+    provider_path = _get_provider_store_path()
+    if not provider_path.exists():
+        return False
+    try:
+        provider_registry = ProviderRegistry(str(provider_path))
+        AMRRegistry(str(_get_amr_store_path())).build_from_providers(provider_registry)
+        _debug_log("route.amr_refreshed", provider_store_path=str(provider_path), amr_store_path=str(_get_amr_store_path()))
+        return True
+    except Exception as exc:
+        _debug_log("route.amr_refresh_failed", error=str(exc), provider_store_path=str(provider_path), amr_store_path=str(_get_amr_store_path()))
+        return False
+
+
 def _load_provider_store_with_secrets() -> Dict[str, Any]:
     """
     独立读取 providers.json，包含 secrets。
@@ -584,6 +600,18 @@ def _resolve_provider_route_for_model(
     caps = set((classification or {}).get("capabilities") or ["text"])
     candidate_list = "image_candidates" if "images" in caps else "candidates"
     decision = registry.route(group_id, request_capabilities=caps, required_context=0, candidate_list=candidate_list)
+    if (
+        not decision.get("success")
+        and group_id == DEFAULT_GROUP_ID
+        and str(decision.get("error") or "") in {
+            "No candidate supports required capabilities",
+            "No candidates configured in group",
+            "No image_candidates configured in group",
+        }
+        and _refresh_default_amr_group_from_provider_store()
+    ):
+        registry = AMRRegistry(str(_get_amr_store_path()))
+        decision = registry.route(group_id, request_capabilities=caps, required_context=0, candidate_list=candidate_list)
     if not decision.get("success"):
         _debug_log("route.amr_fail", model_id=model_id, group_id=group_id, error=decision.get("error"), explanation=decision.get("explanation"))
         return {

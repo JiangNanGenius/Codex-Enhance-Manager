@@ -1415,6 +1415,107 @@ class ProxyIntegrationTest(unittest.TestCase):
         upstream_body = json.loads(args[1]["body"])
         self.assertEqual(upstream_body["model"], "custom-model")
 
+    def test_default_amr_route_refreshes_stale_group_for_native_custom_tools(self):
+        self._write_providers({
+            "providers": [
+                {
+                    "id": "native-proxy",
+                    "short_alias": "native",
+                    "display_name": "Native Proxy",
+                    "enabled": True,
+                    "base_url": "https://native.example.test/v1",
+                    "api_key": "testkey-native",
+                    "api_format": "openai_responses",
+                    "responses_profile": {"mode": "native", "native_responses": True},
+                    "capabilities": {"text": True, "vision": True, "custom_tools": True, "reasoning": True},
+                    "models": [
+                        {
+                            "id": "gpt-native",
+                            "enabled": True,
+                            "selected": True,
+                            "capability_overrides": {"text": True, "vision": True, "reasoning": True},
+                        }
+                    ],
+                }
+            ]
+        })
+        self._write_amr([
+            {
+                "id": "default",
+                "display_name": "Smart Routing",
+                "candidates": [
+                    {
+                        "id": "stale/basic-model",
+                        "provider_id": "stale",
+                        "model_id": "basic-model",
+                        "priority": 1,
+                        "enabled": True,
+                        "context_window": 128000,
+                        "capabilities": {"text": True, "tools": True, "custom_tools": False},
+                    }
+                ],
+            }
+        ])
+
+        route = _resolve_provider_route_for_model(
+            "auto",
+            {"capabilities": ["text", "tools", "custom_tools"]},
+        )
+
+        self.assertTrue(route["success"])
+        self.assertEqual(route["provider"]["id"], "native-proxy")
+        self.assertEqual(route["upstream_model"], "gpt-native")
+        refreshed = json.loads(self.amr_store_path.read_text(encoding="utf-8"))
+        default = next(group for group in refreshed["groups"] if group["id"] == "default")
+        native_candidate = next(c for c in default["candidates"] if c["provider_id"] == "native-proxy")
+        self.assertTrue(native_candidate["capabilities"]["custom_tools"])
+
+    def test_default_amr_refresh_routes_native_image_capable_model(self):
+        self._write_providers({
+            "providers": [
+                {
+                    "id": "native-proxy",
+                    "short_alias": "native",
+                    "display_name": "Native Proxy",
+                    "enabled": True,
+                    "base_url": "https://native.example.test/v1",
+                    "api_key": "testkey-native",
+                    "api_format": "openai_responses",
+                    "responses_profile": {"mode": "native", "native_responses": True},
+                    "capabilities": {"text": True, "vision": True, "custom_tools": True, "images": True},
+                    "models": [
+                        {
+                            "id": "gpt-native",
+                            "enabled": True,
+                            "selected": True,
+                            "capability_overrides": {"text": True, "vision": True, "images": True},
+                        }
+                    ],
+                }
+            ]
+        })
+        self._write_amr([
+            {
+                "id": "default",
+                "display_name": "Smart Routing",
+                "candidates": [],
+                "image_candidates": [],
+            }
+        ])
+
+        route = _resolve_provider_route_for_model(
+            "amr/default",
+            {"capabilities": ["text", "images"]},
+        )
+
+        self.assertTrue(route["success"])
+        self.assertEqual(route["provider"]["id"], "native-proxy")
+        self.assertEqual(route["upstream_model"], "gpt-native")
+        refreshed = json.loads(self.amr_store_path.read_text(encoding="utf-8"))
+        default = next(group for group in refreshed["groups"] if group["id"] == "default")
+        native_image = next(c for c in default["image_candidates"] if c["provider_id"] == "native-proxy")
+        self.assertTrue(native_image["capabilities"]["images"])
+
     def test_amr_route_reloads_saved_order_between_requests(self):
         self._write_providers({
             "providers": [
