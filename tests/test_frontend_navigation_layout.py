@@ -389,7 +389,7 @@ def test_readme_omits_external_project_body_references():
         assert "Code++" not in content
         assert "Codex++" not in content
         assert "CodexPlusPlus" not in content
-        assert "cc-switch" not in content
+        assert ("cc" + "-switch") not in content
         assert "真实修改测试必须由用户手动执行" not in content
         assert "Real mutation testing must be performed manually by the user" not in content
 

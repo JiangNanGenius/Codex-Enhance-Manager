@@ -80,7 +80,7 @@ function formatCacheUsage(data) {
     const sources = Array.isArray(data.cache_sources) ? data.cache_sources : [];
     const sourceLabels = sources.map(source => {
         if (source === 'codex_rollout') return t('cacheSourceCodexRollout');
-        if (source === 'cc_switch_db') return t('cacheSourceCcSwitch');
+        if (source === 'cc_switch_db') return t('cacheSourceLocalCache');
         return source;
     }).filter(Boolean);
     const sourceText = sourceLabels.length ? ` · ${t('cacheSource')}: ${sourceLabels.join(' + ')}` : '';

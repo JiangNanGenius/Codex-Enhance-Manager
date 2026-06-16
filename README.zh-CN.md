@@ -108,7 +108,7 @@ Codex Enhanced Manager 做的就是这件事：尽量不破坏 Codex 原生体�
 
 ## 供应商额度资料
 
-已确认的余额和 Coding Plan 额度读取方法记录在 [docs/provider-quota-and-billing.md](docs/provider-quota-and-billing.md)，包括从 CC Switch 迁移来的 KimiCode、智谱、MiniMax、SiliconFlow、StepFun、OpenRouter、Novita、DeepSeek，以及官方 Codex OAuth 额度读取方式。
+已确认的余额和 Coding Plan 额度读取方法记录在 [docs/provider-quota-and-billing.md](docs/provider-quota-and-billing.md)，包括内置的 KimiCode、智谱、MiniMax、SiliconFlow、StepFun、OpenRouter、Novita、DeepSeek，以及官方 Codex OAuth 额度读取方式。
 
 ## 安装
 
@@ -117,7 +117,7 @@ Codex Enhanced Manager 做的就是这件事：尽量不破坏 Codex 原生体�
 从 [Releases](https://github.com/JiangNanGenius/Codex-Enhance-Manager/releases) 下载最新版，然后运行：
 
 ```text
-CodexHistoryManager.exe
+CodexEnhancedManager.exe
 ```
 
 ### 从源码运行
@@ -146,7 +146,7 @@ python build_exe.py --no-desktop-copy --smoke-test --write-release-manifest
 发布资产：
 
 ```text
-dist/CodexHistoryManager.exe
+dist/CodexEnhancedManager.exe
 dist/release-manifest.json
 ```
 

@@ -9,7 +9,7 @@
 - [x] 版本号升至 `v2.2.8`，避免复用已发布的 `v2.2.7`。
 - [x] README 中英文重写为面向用户的说明，去掉旧的技术化检查说明和“手动修改限制”表达。
 - [x] 新增中英文 `RELEASE_NOTES.md`，作为 GitHub Release 描述来源。
-- [x] 跑完整测试、重新打包 `dist/CodexHistoryManager.exe`，并生成 `dist/release-manifest.json`。
+- [x] 跑完整测试、重新打包 `dist/CodexEnhancedManager.exe`，并生成 `dist/release-manifest.json`。
 - [x] 对打包后的 EXE 运行 `--smoke-test`。真实桌面冒烟仍需继续覆盖：主界面、设置向导、悬浮窗、托盘菜单、启动/关闭 Codex、退出清理。
 - [x] 提交、推送，并创建带 EXE 资产的 GitHub Release：`https://github.com/JiangNanGenius/Codex-Enhance-Manager/releases/tag/v2.2.8`。
 - [x] 提交、推送，并创建带 EXE 资产的 hotfix Release：`https://github.com/JiangNanGenius/Codex-Enhance-Manager/releases/tag/v2.2.9`。
@@ -73,7 +73,7 @@
 - [x] 设置页真实接口验证：打包 EXE 启动后 `/api/startup/status` 正常返回，开机启动状态检查走隐藏控制台参数。
 - [x] 启动优化验证：后端 `create_app()` 从 500ms 级别降到约 27ms；总览/设置页改为首屏先出、慢检查后台刷新。
 - [ ] 打开打包版 EXE，检查主界面、设置页、总览、悬浮窗、托盘菜单、启动 Codex 和退出清理。
-- [x] GitHub Release 上传 `dist/CodexHistoryManager.exe` 和 `dist/release-manifest.json`。
+- [x] GitHub Release 上传 `dist/CodexEnhancedManager.exe` 和 `dist/release-manifest.json`。
 - [x] Release 描述必须中英文双语，并写清测试结果和已知风险。
 
 ## 已知提醒安排

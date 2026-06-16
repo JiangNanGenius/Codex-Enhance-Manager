@@ -5554,7 +5554,7 @@ def _attach_usage_source_summary(
             "kind": "total_tokens",
             "tooltip": (
                 "Codex DB threads.tokens_used remains the compatibility fallback for total tokens; "
-                "cache read/write details require Codex rollout or proxy/CC Switch sources."
+                "cache read/write details require Codex rollout or local proxy/cache sources."
             ),
         },
         {
@@ -5586,8 +5586,8 @@ def _attach_usage_source_summary(
         },
         {
             "id": "cc_switch_db",
-            "label": "CC Switch DB",
-            "badge": "CC Switch DB",
+            "label": "Local Cache DB",
+            "badge": "Local Cache DB",
             "status": "active" if cc_supported else ("configured" if cc_configured else "not_configured"),
             "active": cc_supported,
             "kind": "cache_tokens",

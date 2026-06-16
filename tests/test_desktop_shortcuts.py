@@ -67,12 +67,12 @@ class DesktopShortcutManagerTest(unittest.TestCase):
     def test_frozen_target_uses_executable_directly(self):
         with tempfile.TemporaryDirectory() as tmpdir, \
                 patch("desktop_shortcuts.sys.frozen", True, create=True), \
-                patch("desktop_shortcuts.sys.executable", str(Path(tmpdir) / "CodexHistoryManager.exe")):
+                patch("desktop_shortcuts.sys.executable", str(Path(tmpdir) / "CodexEnhancedManager.exe")):
             manager = DesktopShortcutManager(desktop_dir=Path(tmpdir), platform_name="Windows")
 
             target, args, _ = manager.resolve_target_and_arguments([START_CODEX_ARG])
 
-            self.assertTrue(target.endswith("CodexHistoryManager.exe"))
+            self.assertTrue(target.endswith("CodexEnhancedManager.exe"))
             self.assertEqual(args, START_CODEX_ARG)
 
 

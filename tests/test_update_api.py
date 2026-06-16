@@ -28,7 +28,7 @@ class UpdateApiTest(unittest.TestCase):
             manager = MockUpdateManager.return_value
             manager.download_latest.return_value = {
                 "success": True,
-                "downloaded_path": "C:/Updates/CodexHistoryManager.exe",
+                "downloaded_path": "C:/Updates/CodexEnhancedManager.exe",
                 "restart_required": True,
             }
 

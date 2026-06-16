@@ -1,5 +1,15 @@
 # Release Notes
 
+## v2.2.28 - 2026-06-17
+
+- Switched the packaged and desktop EXE filename to `CodexEnhancedManager.exe`; desktop copy cleanup now removes the old filename when possible.
+- Improved Codex process detection with a Windows CIM path-based fallback for current `OpenAI.Codex` desktop processes.
+- Automatically refreshes stale Codex launch paths in settings when a WindowsApps package version changes or a CLI/runtime shim was saved as the launch target.
+- Removed third-party tool attribution from visible quota, provider, README, and frontend strings.
+- Renamed the frontend local-cache setting ids and labels while keeping the existing config key compatible.
+- Verified with targeted process/config/build/updater/frontend checks, Python compile checks, JavaScript syntax checks, local config refresh, and packaged EXE smoke test. Full pytest was intentionally skipped because this environment has Codex-disruptive tests.
+- EXE: `71.34 MB`; SHA256: `990c54c759b41d6e897c4025591e94755aac82da6ae7502678c2f90ab7cf50da`.
+
 ## v2.2.27 - 2026-06-17
 
 - Added a required user confirmation before the app closes an already-running Codex process during launch or injection setup.
@@ -183,8 +193,8 @@
 - Codex 连接页会自动检查将保存的连接信息，保存前使用同一套 `User-Agent` 和自定义 Header。
 - 供应商页只负责连接、模型能力和媒体能力；模型轮换页负责新会话顺序、优先级和故障转移。
 - 增强纯原生 Responses/Chat 代理的模型级区分，保留原生模式和 Codex 登录态下的配置锁定逻辑。
-- 发布包必须包含 `CodexHistoryManager.exe` 和 `release-manifest.json`；本次 EXE 大小 `73.14 MB`，SHA256 `2c549ecf3188d5bd5b88771583ccd1b8272d7468a5615a42cf3cdb1d80dd1edd`。
-- 已通过 `python -m pytest -q`、JS/Python 静态检查、`python build_exe.py --no-desktop-copy --smoke-test --write-release-manifest` 和独立 `CodexHistoryManager.exe --smoke-test`。
+- 发布包必须包含 `CodexEnhancedManager.exe` 和 `release-manifest.json`；本次 EXE 大小 `73.14 MB`，SHA256 `2c549ecf3188d5bd5b88771583ccd1b8272d7468a5615a42cf3cdb1d80dd1edd`。
+- 已通过 `python -m pytest -q`、JS/Python 静态检查、`python build_exe.py --no-desktop-copy --smoke-test --write-release-manifest` 和独立 `CodexEnhancedManager.exe --smoke-test`。
 
 ### English
 
@@ -194,5 +204,5 @@
 - The Codex connection page now checks the connection that will be saved and uses the same `User-Agent` plus custom headers as real proxy requests.
 - Provider setup is limited to connection and model/media capability details; Model Rotation owns new-session order, priority, and failover.
 - Improved model-level separation for native Responses, compatible Responses, and Chat providers while preserving official-login and native-mode locks.
-- Releases must include `CodexHistoryManager.exe` and `release-manifest.json`; this EXE is `73.14 MB` with SHA256 `2c549ecf3188d5bd5b88771583ccd1b8272d7468a5615a42cf3cdb1d80dd1edd`.
-- Verified with `python -m pytest -q`, JS/Python static checks, `python build_exe.py --no-desktop-copy --smoke-test --write-release-manifest`, and a separate `CodexHistoryManager.exe --smoke-test` run.
+- Releases must include `CodexEnhancedManager.exe` and `release-manifest.json`; this EXE is `73.14 MB` with SHA256 `2c549ecf3188d5bd5b88771583ccd1b8272d7468a5615a42cf3cdb1d80dd1edd`.
+- Verified with `python -m pytest -q`, JS/Python static checks, `python build_exe.py --no-desktop-copy --smoke-test --write-release-manifest`, and a separate `CodexEnhancedManager.exe --smoke-test` run.

@@ -42,10 +42,10 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: CodexHistoryManager-windows
+          name: CodexEnhancedManager-windows
           if-no-files-found: error
           path: |
-            dist/CodexHistoryManager.exe
+            dist/CodexEnhancedManager.exe
             dist/release-manifest.json
 
       - name: Attach assets to GitHub Release
@@ -65,7 +65,7 @@ jobs:
           $uploadHeaders = $baseHeaders.Clone()
           $uploadHeaders["Content-Type"] = "application/octet-stream"
           $files = @(
-            "dist/CodexHistoryManager.exe",
+            "dist/CodexEnhancedManager.exe",
             "dist/release-manifest.json"
           )
           $assets = Invoke-RestMethod -Method Get -Uri $env:ASSETS_URL -Headers $baseHeaders

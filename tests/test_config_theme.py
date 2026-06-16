@@ -44,6 +44,23 @@ class ConfigThemeTest(unittest.TestCase):
         self.assertEqual(cfg._data["startup_task_name"], "CodexEnhancedManager")
         self.assertEqual(cfg._data["startup_shortcut_name"], "CodexEnhancedManager.cmd")
 
+    def test_auto_detect_refreshes_stale_windowsapps_codex_path(self):
+        old_path = r"C:\Program Files\WindowsApps\OpenAI.Codex_26.602.4764.0_x64__demo\app\Codex.exe"
+        new_path = r"C:\Program Files\WindowsApps\OpenAI.Codex_26.609.9530.0_x64__demo\app\Codex.exe"
+        cfg = Config.__new__(Config)
+        cfg._data = copy.deepcopy(DEFAULT_CONFIG)
+        cfg._data["codex_cli_path"] = old_path
+        cfg.save = lambda: None
+
+        with patch("config.detect_codex_db", return_value=""), \
+                patch("config.detect_sessions_dir", return_value=""), \
+                patch("config.detect_archived_dir", return_value=""), \
+                patch("config.detect_codex_plus_plus", return_value=""), \
+                patch("config.detect_codex_desktop", return_value=new_path):
+            cfg._auto_detect_if_needed()
+
+        self.assertEqual(cfg._data["codex_cli_path"], new_path)
+
     def test_app_storage_paths_are_migrated_to_new_display_name_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

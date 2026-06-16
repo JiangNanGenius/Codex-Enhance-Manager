@@ -107,7 +107,7 @@ class BuildExeReleaseTest(unittest.TestCase):
         self.assertIn("types: [published]", workflow)
         self.assertIn("--smoke-test", workflow)
         self.assertIn("Verify release assets and smoke test EXE", workflow)
-        self.assertIn("dist/CodexHistoryManager.exe", workflow)
+        self.assertIn("dist/CodexEnhancedManager.exe", workflow)
         self.assertIn("dist/release-manifest.json", workflow)
         self.assertIn("Required release asset missing", workflow)
 

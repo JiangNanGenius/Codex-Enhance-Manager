@@ -55,6 +55,40 @@ def _migrate_app_storage_path(value: Any) -> Any:
         return str(app_data_dir() / relative)
     return value
 
+
+def _path_exists(value: Any) -> bool:
+    try:
+        return bool(value) and Path(str(value)).expanduser().exists()
+    except (OSError, ValueError):
+        return False
+
+
+def _looks_like_windowsapps_codex_path(value: Any) -> bool:
+    text = str(value or "").replace("/", "\\").lower()
+    return "\\windowsapps\\openai.codex_" in text and text.endswith("\\app\\codex.exe")
+
+
+def _looks_like_cli_runtime_path(value: Any) -> bool:
+    text = str(value or "").replace("/", "\\").lower()
+    return "\\openai\\codex\\bin\\" in text or "\\openai\\codex\\runtimes\\" in text
+
+
+def _should_refresh_codex_launch_path(current: Any, detected: str) -> bool:
+    if not detected:
+        return False
+    current_text = str(current or "").strip()
+    if not current_text:
+        return True
+    if current_text == detected:
+        return False
+    if not _path_exists(current_text):
+        return True
+    if _looks_like_windowsapps_codex_path(current_text) and _looks_like_windowsapps_codex_path(detected):
+        return True
+    if _looks_like_cli_runtime_path(current_text) and _looks_like_windowsapps_codex_path(detected):
+        return True
+    return False
+
 DEFAULT_CONFIG = {
     "db_path": "",
     "sessions_dir": "",
@@ -461,11 +495,10 @@ class Config:
                 self._data["codex_plus_plus_path"] = detected
                 changed = True
 
-        if not self._data.get("codex_cli_path"):
-            detected = detect_codex_desktop() or detect_codex_launch_path()
-            if detected:
-                self._data["codex_cli_path"] = detected
-                changed = True
+        detected_codex_launch = detect_codex_desktop() or detect_codex_launch_path()
+        if _should_refresh_codex_launch_path(self._data.get("codex_cli_path"), detected_codex_launch):
+            self._data["codex_cli_path"] = detected_codex_launch
+            changed = True
 
         if changed:
             self.save()

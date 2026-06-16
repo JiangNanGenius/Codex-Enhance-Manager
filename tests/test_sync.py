@@ -122,6 +122,21 @@ class SyncHelpersTest(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["timeout"], 4)
         sleep.assert_called_once_with(0.4)
 
+    def test_codex_process_path_detection_accepts_windowsapps_desktop(self):
+        path = r"C:\Program Files\WindowsApps\OpenAI.Codex_26.609.9530.0_x64__2p2nqsd0c76g0\app\Codex.exe"
+
+        self.assertTrue(sync._looks_like_codex_process_path(path))
+        self.assertFalse(sync._looks_like_codex_process_path(r"C:\Apps\CodexEnhancedManager.exe"))
+
+    def test_is_codex_running_uses_cim_path_fallback(self):
+        with patch.object(sync, "_find_pids_by_image", return_value=[]), \
+                patch.object(sync, "_find_codex_desktop_pids_by_cim", return_value=[321]), \
+                patch.object(sync, "_find_node_codex_pids", return_value=[]):
+            running, pids = sync.is_codex_running(timeout=1)
+
+        self.assertTrue(running)
+        self.assertEqual(pids, [321])
+
     def test_codex_launch_candidates_prefer_visible_gui_before_cli_shims(self):
         local = r"C:\Users\demo\AppData\Local"
         appdata_gui = local + r"\OpenAI\Codex\Codex.exe"

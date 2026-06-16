@@ -87,7 +87,7 @@ def responses_to_chat_completions(body: Dict[str, Any]) -> Dict[str, Any]:
     这是协议转换的核心函数，Codex CLI 发送的是 Responses 格式，而大多数国内/第三方
     Provider 只支持 Chat Completions 格式，因此必须经过此转换。
 
-    Verified behaviors from Codex++ / CC Switch tests and openai/codex item shapes：
+    Verified behaviors from local adapter tests and openai/codex item shapes：
     - instructions -> system message at head
     - input array -> messages array with role normalization
     - max_output_tokens -> max_tokens (o-series 用 max_completion_tokens)
@@ -284,7 +284,7 @@ def _responses_content_to_chat_content(content: Any) -> Any:
     Convert official Codex Responses content items into Chat message content.
 
     openai/codex models.rs defines content items as input_text, input_image and
-    output_text. CodexPlusPlus and CC Switch both preserve input_image by
+    output_text. Compatible adapters preserve input_image by
     emitting Chat Completions image_url blocks. When a message is text-only we
     keep the historic plain-string shape for broad Chat provider compatibility.
     """

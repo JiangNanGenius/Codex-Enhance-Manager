@@ -13,6 +13,8 @@ sync.py - Codex 历史记录同步引擎
 
 """
 import os
+import csv
+import io
 import json
 import re
 import sqlite3
@@ -154,6 +156,16 @@ def _decode_tasklist_output(stdout: bytes) -> str:
     return stdout.decode("utf-8", errors="replace")
 
 
+def _csv_dict_rows(output: str) -> List[Dict[str, str]]:
+    text = str(output or "").strip()
+    if not text:
+        return []
+    try:
+        return [dict(row) for row in csv.DictReader(io.StringIO(text))]
+    except Exception:
+        return []
+
+
 def _find_pids_by_image(image_name: str, timeout: int = 10) -> List[int]:
     """Find PIDs by image name using tasklist."""
     pids = []
@@ -171,6 +183,51 @@ def _find_pids_by_image(image_name: str, timeout: int = 10) -> List[int]:
                 pid_str = parts[1]
                 if name.lower() == image_name.lower() and pid_str.isdigit():
                     pids.append(int(pid_str))
+    except Exception:
+        pass
+    return pids
+
+
+def _looks_like_codex_process_path(path: str) -> bool:
+    normalized = str(path or "").replace("/", "\\").lower()
+    if not normalized.endswith("\\codex.exe"):
+        return False
+    if "\\openai.codex_" in normalized and "\\app\\" in normalized:
+        return True
+    if "\\openai\\codex\\" in normalized:
+        return True
+    if "\\programs\\codex" in normalized:
+        return True
+    return False
+
+
+def _find_codex_desktop_pids_by_cim(timeout: int = 10) -> List[int]:
+    """Find current Codex Desktop processes by executable path."""
+    if os.name != "nt":
+        return []
+    pids: List[int] = []
+    try:
+        import subprocess
+        ps_cmd = (
+            "Get-CimInstance Win32_Process | "
+            "Where-Object { $_.Name -ieq 'Codex.exe' -or $_.Name -ieq 'codex.exe' } | "
+            "Select-Object ProcessId,Name,ExecutablePath,CommandLine | "
+            "ConvertTo-Csv -NoTypeInformation"
+        )
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_cmd],
+            capture_output=True, timeout=timeout, creationflags=CREATE_NO_WINDOW
+        )
+        output = _decode_tasklist_output(result.stdout)
+        for row in _csv_dict_rows(output):
+            pid_str = str(row.get("ProcessId") or "").strip()
+            executable = str(row.get("ExecutablePath") or "")
+            command_line = str(row.get("CommandLine") or "")
+            if pid_str.isdigit() and (
+                _looks_like_codex_process_path(executable)
+                or _looks_like_codex_process_path(command_line)
+            ):
+                pids.append(int(pid_str))
     except Exception:
         pass
     return pids
@@ -247,6 +304,7 @@ def is_codex_running(timeout: int = 3) -> Tuple[bool, List[int]]:
     safe_timeout = max(int(timeout or 3), 1)
     for image_name in CODEX_PROCESS_NAMES:
         pids.extend(_find_pids_by_image(image_name, timeout=safe_timeout))
+    pids.extend(_find_codex_desktop_pids_by_cim(timeout=safe_timeout))
     pids.extend(_find_node_codex_pids(timeout=safe_timeout))
     # Deduplicate：dict.fromkeys 保持顺序去重，Python 3.7+ 有序性保证
     unique_pids = list(dict.fromkeys(pids))

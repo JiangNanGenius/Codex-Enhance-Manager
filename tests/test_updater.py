@@ -56,7 +56,7 @@ class UpdateManagerTest(unittest.TestCase):
                 "published_at": "2026-06-08T00:00:00Z",
                 "assets": [
                     {
-                        "name": "CodexHistoryManager.exe",
+                        "name": "CodexEnhancedManager.exe",
                         "browser_download_url": "https://downloads.example/app.exe",
                         "size": 1234,
                         "digest": "sha256:test",
@@ -76,7 +76,7 @@ class UpdateManagerTest(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertTrue(result["update_available"])
         self.assertEqual(result["latest_version"], "v2.2.3")
-        self.assertEqual(result["release"]["asset"]["name"], "CodexHistoryManager.exe")
+        self.assertEqual(result["release"]["asset"]["name"], "CodexEnhancedManager.exe")
 
     def test_check_latest_skips_prerelease_by_default(self):
         opener = FakeOpener([
@@ -90,14 +90,14 @@ class UpdateManagerTest(unittest.TestCase):
         self.assertEqual(result["latest_version"], "v2.2.2")
 
     def test_download_latest_writes_exe_under_version_folder(self):
-        download_url = "https://downloads.example/CodexHistoryManager.exe"
+        download_url = "https://downloads.example/CodexEnhancedManager.exe"
         opener = FakeOpener(
             [
                 {
                     "tag_name": "v2.2.3",
                     "assets": [
                         {
-                            "name": "CodexHistoryManager.exe",
+                            "name": "CodexEnhancedManager.exe",
                             "browser_download_url": download_url,
                             "size": 7,
                         }
@@ -118,7 +118,7 @@ class UpdateManagerTest(unittest.TestCase):
 
             self.assertTrue(result["success"])
             path = Path(result["downloaded_path"])
-            self.assertEqual(path.name, "CodexHistoryManager.exe")
+            self.assertEqual(path.name, "CodexEnhancedManager.exe")
             self.assertEqual(path.parent.name, "v2.2.3")
             self.assertEqual(path.read_bytes(), b"EXE-DAT")
 

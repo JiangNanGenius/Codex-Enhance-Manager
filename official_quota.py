@@ -2,7 +2,7 @@
 
 This module intentionally never refreshes or writes Codex auth/config files.
 It only reads the existing Codex OAuth access token and queries the same
-ChatGPT wham usage endpoint used by Codex/CC Switch.
+ChatGPT wham usage endpoint used by Codex usage displays.
 """
 from __future__ import annotations
 

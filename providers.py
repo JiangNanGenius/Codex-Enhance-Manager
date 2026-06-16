@@ -2007,7 +2007,7 @@ STEPFUN_BALANCE_QUOTA = _quota_http_json(
         "voucher_balance": "$.total_voucher_balance",
         "currency": "$.currency",
     },
-    note="CC Switch 可用方法：StepFun 余额接口 GET /v1/accounts；使用 Bearer 鉴权，余额单位 CNY。",
+    note="内置额度读取方法：StepFun 余额接口 GET /v1/accounts；使用 Bearer 鉴权，余额单位 CNY。",
     enabled=True,
 )
 
@@ -2021,7 +2021,7 @@ SILICONFLOW_CN_BALANCE_QUOTA = _quota_http_json(
         "charge_balance": "$.data.chargeBalance",
         "status": "$.data.status",
     },
-    note="CC Switch 可用方法：SiliconFlow 中国站 GET /v1/user/info；totalBalance 为 CNY 余额。",
+    note="内置额度读取方法：SiliconFlow 中国站 GET /v1/user/info；totalBalance 为 CNY 余额。",
     enabled=True,
 )
 
@@ -2063,7 +2063,7 @@ OPENROUTER_CREDITS_QUOTA_SCRIPT = r"""
 
 OPENROUTER_USAGE_QUOTA = _quota_script(
     code=OPENROUTER_CREDITS_QUOTA_SCRIPT,
-    note="CC Switch 可用方法：OpenRouter Credits 接口 GET /api/v1/credits；浮窗显示剩余额度、已用额度和百分比。",
+    note="内置额度读取方法：OpenRouter Credits 接口 GET /api/v1/credits；浮窗显示剩余额度、已用额度和百分比。",
     enabled=True,
     ttl_seconds=300,
 )
@@ -2096,7 +2096,7 @@ NOVITA_BALANCE_QUOTA_SCRIPT = r"""
 
 NOVITA_BALANCE_QUOTA = _quota_script(
     code=NOVITA_BALANCE_QUOTA_SCRIPT,
-    note="CC Switch 可用方法：Novita AI GET /v3/user/balance；返回金额单位为 0.0001 USD，脚本会换算为 USD。",
+    note="内置额度读取方法：Novita AI GET /v3/user/balance；返回金额单位为 0.0001 USD，脚本会换算为 USD。",
     enabled=True,
     ttl_seconds=300,
 )
@@ -2143,7 +2143,7 @@ KIMI_CODING_PLAN_QUOTA_SCRIPT = r"""
 
 KIMI_CODING_PLAN_QUOTA = _quota_script(
     code=KIMI_CODING_PLAN_QUOTA_SCRIPT,
-    note="CC Switch 可用方法：KimiCode/Coding Plan GET /coding/v1/usages；读取 five_hour 与 weekly_limit 使用百分比。",
+    note="内置额度读取方法：KimiCode/Coding Plan GET /coding/v1/usages；读取 five_hour 与 weekly_limit 使用百分比。",
     enabled=True,
     ttl_seconds=300,
 )
@@ -2203,7 +2203,7 @@ ZHIPU_CODING_PLAN_QUOTA_SCRIPT = r"""
 
 ZHIPU_CODING_PLAN_QUOTA = _quota_script(
     code=ZHIPU_CODING_PLAN_QUOTA_SCRIPT,
-    note="CC Switch 可用方法：智谱 Coding Plan GET /api/monitor/usage/quota/limit；Authorization 直接传 API Key，不加 Bearer。",
+    note="内置额度读取方法：智谱 Coding Plan GET /api/monitor/usage/quota/limit；Authorization 直接传 API Key，不加 Bearer。",
     enabled=True,
     ttl_seconds=300,
 )
@@ -2255,7 +2255,7 @@ MINIMAX_CN_CODING_PLAN_QUOTA_SCRIPT = r"""
 
 MINIMAX_CN_CODING_PLAN_QUOTA = _quota_script(
     code=MINIMAX_CN_CODING_PLAN_QUOTA_SCRIPT,
-    note="CC Switch 可用方法：MiniMax 中国区 Coding Plan GET /v1/api/openplatform/coding_plan/remains；只取 general 套餐。",
+    note="内置额度读取方法：MiniMax 中国区 Coding Plan GET /v1/api/openplatform/coding_plan/remains；只取 general 套餐。",
     enabled=True,
     ttl_seconds=300,
 )
@@ -2301,7 +2301,7 @@ ZENMUX_CODING_PLAN_QUOTA_SCRIPT = r"""
 
 ZENMUX_CODING_PLAN_QUOTA = _quota_script(
     code=ZENMUX_CODING_PLAN_QUOTA_SCRIPT,
-    note="CC Switch 可用方法：ZenMux 在配置 baseUrl 上读取 quota_5_hour/quota_7_day；适合用户自定义 ZenMux 供应商。",
+    note="内置额度读取方法：ZenMux 在配置 baseUrl 上读取 quota_5_hour/quota_7_day；适合用户自定义 ZenMux 供应商。",
     enabled=True,
     ttl_seconds=300,
 )
@@ -3114,7 +3114,7 @@ PROVIDER_PRESETS: List[Dict[str, Any]] = [
         "preset_id": "kimi-coding-plan",
         "name": "KimiCode / Kimi For Coding",
         "category": "domestic",
-        "description": "KimiCode Coding Plan，使用 OpenAI 兼容格式，并预置 CC Switch 可用的套餐百分比读取脚本。",
+        "description": "KimiCode Coding Plan，使用 OpenAI 兼容格式，并预置套餐百分比读取脚本。",
         "provider": {
             "id": "kimi-coding",
             "display_name": "KimiCode",
@@ -3495,7 +3495,7 @@ PROVIDER_PRESETS: List[Dict[str, Any]] = [
         "preset_id": "novita-ai",
         "name": "Novita AI",
         "category": "text",
-        "description": "Novita AI OpenAI-compatible endpoint，预置 CC Switch 可用的余额读取脚本。",
+        "description": "Novita AI OpenAI-compatible endpoint，预置余额读取脚本。",
         "provider": {
             "id": "novita-ai",
             "display_name": "Novita AI",

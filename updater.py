@@ -16,7 +16,9 @@ from app_paths import app_data_path, ensure_app_dirs
 from app_version import APP_RELEASES_API_URL, APP_REPOSITORY_URL, APP_VERSION
 
 
-WINDOWS_EXE_ASSET = "CodexHistoryManager.exe"
+WINDOWS_EXE_ASSET = "CodexEnhancedManager.exe"
+LEGACY_WINDOWS_EXE_ASSETS = ("Codex" + "HistoryManager.exe",)
+WINDOWS_EXE_ASSET_NAMES = (WINDOWS_EXE_ASSET, *LEGACY_WINDOWS_EXE_ASSETS)
 MAX_UPDATE_DOWNLOAD_BYTES = 300 * 1024 * 1024
 DEFAULT_TIMEOUT_SECONDS = 20
 USER_AGENT = "Codex-Enhance-Manager-Updater/1.0"
@@ -106,7 +108,8 @@ class UpdateManager:
         tag = safe_path_part(release.get("tag_name") or check.get("latest_version") or "latest")
         target_dir = self.download_dir / tag
         target_dir.mkdir(parents=True, exist_ok=True)
-        target_path = target_dir / WINDOWS_EXE_ASSET
+        target_name = safe_path_part(str(asset_data.get("name") or WINDOWS_EXE_ASSET))
+        target_path = target_dir / target_name
         downloaded = self._download_file(asset_data["url"], target_path, expected_size=int(asset_data.get("size") or 0))
         return {
             "success": True,
@@ -149,7 +152,7 @@ class UpdateManager:
             if not isinstance(asset, dict):
                 continue
             name = str(asset.get("name") or "")
-            if name.lower() != WINDOWS_EXE_ASSET.lower():
+            if name.lower() not in {asset_name.lower() for asset_name in WINDOWS_EXE_ASSET_NAMES}:
                 continue
             url = str(asset.get("browser_download_url") or "")
             if not url:

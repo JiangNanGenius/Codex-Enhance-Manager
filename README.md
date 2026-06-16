@@ -106,7 +106,7 @@ References: [openai/codex `responses.rs`](https://github.com/openai/codex/blob/m
 
 ## Provider Quota Notes
 
-Known balance and Coding Plan quota methods are documented in [docs/provider-quota-and-billing.md](docs/provider-quota-and-billing.md), including the CC Switch-derived endpoints for KimiCode, Zhipu, MiniMax, SiliconFlow, StepFun, OpenRouter, Novita, DeepSeek, and official Codex OAuth quota.
+Known balance and Coding Plan quota methods are documented in [docs/provider-quota-and-billing.md](docs/provider-quota-and-billing.md), including built-in endpoints for KimiCode, Zhipu, MiniMax, SiliconFlow, StepFun, OpenRouter, Novita, DeepSeek, and official Codex OAuth quota.
 
 ## Install
 
@@ -115,7 +115,7 @@ Known balance and Coding Plan quota methods are documented in [docs/provider-quo
 Download the latest build from [Releases](https://github.com/JiangNanGenius/Codex-Enhance-Manager/releases), then run:
 
 ```text
-CodexHistoryManager.exe
+CodexEnhancedManager.exe
 ```
 
 ### From Source
@@ -144,7 +144,7 @@ python build_exe.py --no-desktop-copy --smoke-test --write-release-manifest
 Release assets:
 
 ```text
-dist/CodexHistoryManager.exe
+dist/CodexEnhancedManager.exe
 dist/release-manifest.json
 ```
 

@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 STARTUP_CONFIRMATION = "MODIFY_WINDOWS_STARTUP"
 STARTUP_MODES = {"disabled", "startup_folder", "scheduled_task_highest"}
-PACKAGED_RELEASE_EXE_NAME = "CodexHistoryManager.exe"
+PACKAGED_RELEASE_EXE_NAME = "CodexEnhancedManager.exe"
 STARTUP_CONFIG_KEYS = (
     "startup_enabled",
     "startup_mode",

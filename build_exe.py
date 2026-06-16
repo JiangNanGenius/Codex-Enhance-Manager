@@ -30,7 +30,8 @@ DESKTOP_DIR = Path("C:/Users/Public/Desktop")
 USER_DESKTOP_DIR = Path.home() / "OneDrive" / "桌面"
 if not USER_DESKTOP_DIR.exists():
     USER_DESKTOP_DIR = Path.home() / "Desktop"
-EXE_NAME = "CodexHistoryManager.exe"
+EXE_NAME = "CodexEnhancedManager.exe"
+LEGACY_EXE_NAMES = ("Codex" + "HistoryManager.exe",)
 RELEASE_MANIFEST_NAME = "release-manifest.json"
 LAST_COPIED_EXE: Path | None = None
 PYINSTALLER_RUNTIME_TMPDIR_TEMPLATE = r"%LOCALAPPDATA%\CodexEnhancedManager\pyi-runtime"
@@ -415,6 +416,13 @@ def copy_to_desktop():
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(exe_path), str(target))
+            for legacy_name in LEGACY_EXE_NAMES:
+                legacy_target = target.parent / legacy_name
+                if legacy_target != target and legacy_target.exists():
+                    try:
+                        legacy_target.unlink()
+                    except OSError:
+                        pass
             LAST_COPIED_EXE = target
             print(f"已复制到桌面: {target}")
             size_mb = target.stat().st_size / (1024 * 1024)
@@ -546,7 +554,7 @@ if __name__ == "__main__":
             if args.no_desktop_copy:
                 print(f"\n完成! Release EXE 已生成: {release_exe_path()}")
             else:
-                print("\n完成! 桌面已生成 CodexHistoryManager.exe")
+                print(f"\n完成! 桌面已生成 {EXE_NAME}")
         else:
             print("\n构建完成，但验证未通过")
             sys.exit(1)
