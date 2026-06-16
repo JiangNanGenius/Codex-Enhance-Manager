@@ -1,5 +1,13 @@
 # Release Notes
 
+## v2.2.23 - 2026-06-16
+
+- Fixed the native Token Monitor so it can still read local token/context data when the desktop HTTP URL is unavailable or stale.
+- Added an in-process fallback for the monitor's `/api/token/current` snapshot; this does not depend on Codex page injection.
+- Improved monitor rendering so stable token totals show `0 tok/min` instead of staying blank, and zero context-used values display as `0 / window`.
+- Verified with targeted native monitor unit tests, real local `/api/token/current` snapshot via Flask test client, and packaged EXE smoke test. Full pytest was intentionally skipped because this environment has Codex-disruptive tests.
+- EXE: `74.25 MB`; SHA256: `73965249b5212256622938a0dfea930cc471340136781da69a8fe5b6c08c792f`.
+
 ## v2.2.22 - 2026-06-16
 
 - Added a built-in Simplified Chinese Codex UI enhancement that translates common buttons, menus, labels, and input placeholders through the existing injection layer.

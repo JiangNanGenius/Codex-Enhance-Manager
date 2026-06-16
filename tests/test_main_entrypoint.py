@@ -184,6 +184,78 @@ class MainEntrypointTest(unittest.TestCase):
         self.assertEqual(main._format_monitor_number(477_930_123, compact=True), "477.93M")
         self.assertEqual(main._format_monitor_number(166_995), "166,995")
 
+    def test_monitor_stats_snapshot_falls_back_to_in_process_app(self):
+        class FakeResponse:
+            status_code = 200
+
+            def get_json(self, silent=True):
+                return {"total_tokens": 123, "current_context_window": 258400}
+
+        class FakeClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def get(self, path):
+                self.path = path
+                return FakeResponse()
+
+        class FakeApp:
+            def __init__(self):
+                self.client = FakeClient()
+
+            def test_client(self):
+                return self.client
+
+        original_app = main.desktop_flask_app
+        fake_app = FakeApp()
+        try:
+            main.desktop_flask_app = fake_app
+            with patch.object(main, "_fetch_monitor_stats_http", side_effect=OSError("port down")):
+                data = main._fetch_monitor_stats_snapshot()
+        finally:
+            main.desktop_flask_app = original_app
+
+        self.assertEqual(data["total_tokens"], 123)
+        self.assertEqual(data["current_context_window"], 258400)
+        self.assertEqual(data["monitor_transport"], "in_process")
+        self.assertIn("port down", data["monitor_http_error"])
+        self.assertEqual(fake_app.client.path, main._monitor_stats_path())
+
+    def test_native_monitor_shows_zero_speed_and_zero_context_used(self):
+        class FakeLabel:
+            def __init__(self):
+                self.text = ""
+
+            def configure(self, **kwargs):
+                if "text" in kwargs:
+                    self.text = kwargs["text"]
+
+        monitor = main.NativeTokenMonitor(main.DesktopApi())
+        monitor._labels = {
+            "value": FakeLabel(),
+            "context": FakeLabel(),
+            "speed": FakeLabel(),
+            "quota": FakeLabel(),
+            "cache": FakeLabel(),
+            "updated": FakeLabel(),
+        }
+
+        with patch.object(monitor, "_remember_speed_sample", return_value=0):
+            monitor._apply_stats({
+                "total_tokens": 123,
+                "current_context_used_tokens": 0,
+                "current_context_window": 258400,
+                "cache_total_tokens": 0,
+                "quota": {},
+            })
+
+        self.assertEqual(monitor._labels["value"].text, "123")
+        self.assertEqual(monitor._labels["context"].text, "上下文 Context: 0 / 258,400")
+        self.assertEqual(monitor._labels["speed"].text, "速度 Speed: 0 tok/min")
+
     def test_show_monitor_recreates_missing_window_when_desktop_api_exists(self):
         class FakeWindow:
             def __init__(self):

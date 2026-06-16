@@ -106,6 +106,7 @@ allow_exit = False
 main_window = None
 monitor_window = None
 desktop_api = None
+desktop_flask_app = None
 single_instance_lock = None
 loaded_icon_handles: list[int] = []
 pending_launch_action = DESKTOP_LAUNCH_ACTION_SHOW_WINDOW
@@ -506,11 +507,55 @@ def start_flask():
       - debug=False, use_reloader=False：生产/打包环境必须关闭重载器，
         否则会在子进程中再次启动 Flask，导致端口冲突和窗口重复。
     """
+    global desktop_flask_app
     from app import create_app
     os.environ["CODEX_ENHANCE_MANAGER_DESKTOP"] = "1"
     os.environ["CODEX_ENHANCE_MANAGER_PORT"] = str(PORT)
     app = create_app()
+    desktop_flask_app = app
     app.run(host="127.0.0.1", port=PORT, debug=False, use_reloader=False, threaded=True)
+
+
+def _monitor_stats_path() -> str:
+    return "/api/token/current?rollout_total_source=1&rollout_scan_fallback=1"
+
+
+def _fetch_monitor_stats_http(base_url: str | None = None) -> dict:
+    url = f"{(base_url or URL).rstrip('/')}{_monitor_stats_path()}"
+    with urllib.request.urlopen(url, timeout=12) as response:
+        data = json.loads(response.read().decode("utf-8", errors="replace"))
+    if not isinstance(data, dict):
+        raise RuntimeError("Monitor token endpoint returned a non-object payload.")
+    return data
+
+
+def _fetch_monitor_stats_in_process() -> dict:
+    app = desktop_flask_app
+    if app is None:
+        raise RuntimeError("Desktop backend app is not ready.")
+    with app.test_client() as client:
+        response = client.get(_monitor_stats_path())
+        if response.status_code != 200:
+            raise RuntimeError(f"Monitor token endpoint returned HTTP {response.status_code}.")
+        data = response.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise RuntimeError("Monitor token endpoint returned a non-object payload.")
+    data.setdefault("monitor_transport", "in_process")
+    return data
+
+
+def _fetch_monitor_stats_snapshot() -> dict:
+    try:
+        data = _fetch_monitor_stats_http()
+        data.setdefault("monitor_transport", "http")
+        return data
+    except Exception as http_error:
+        try:
+            data = _fetch_monitor_stats_in_process()
+            data.setdefault("monitor_http_error", str(http_error))
+            return data
+        except Exception:
+            raise http_error
 
 
 def _load_tray_image():
@@ -1375,11 +1420,7 @@ class NativeTokenMonitor:
 
     def _fetch_stats_worker(self):
         try:
-            with urllib.request.urlopen(
-                f"{URL}/api/token/current?rollout_total_source=1&rollout_scan_fallback=1",
-                timeout=12,
-            ) as response:
-                data = json.loads(response.read().decode("utf-8", errors="replace"))
+            data = _fetch_monitor_stats_snapshot()
             self._commands.put(("stats", True, data))
         except Exception:
             self._commands.put(("stats", False, {}))
@@ -1391,13 +1432,13 @@ class NativeTokenMonitor:
         cache_total = data.get("cache_total_tokens") or data.get("cache_total") or 0
         speed = self._remember_speed_sample(total)
         self._labels["value"].configure(text=_format_monitor_number(total, compact=True))
-        if context_used and context_window:
+        if context_used is not None and context_window:
             self._labels["context"].configure(
                 text=f"上下文 Context: {_format_monitor_number(context_used)} / {_format_monitor_number(context_window)}"
             )
         else:
             self._labels["context"].configure(text="上下文 Context: --")
-        if speed:
+        if speed is not None:
             self._labels["speed"].configure(text=f"速度 Speed: {_format_monitor_number(speed, compact=True)} tok/min")
         else:
             self._labels["speed"].configure(text="速度 Speed: --")
