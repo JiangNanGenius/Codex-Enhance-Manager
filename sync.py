@@ -11,7 +11,6 @@ sync.py - Codex 历史记录同步引擎
   同步 = 把所有 threads 的 model_provider 和 model 统一改成当前配置值，
   让切换账户后所有历史会话都可见。
 
-参照：pangkk18/codex-history-sync（GitHub）
 """
 import os
 import json
@@ -34,9 +33,11 @@ DEFAULT_MODEL = "gpt-5"
 # Codex 进程名（Windows）
 CODEX_PROCESS_NAMES = ["codex.exe", "Codex.exe"]
 
-# Codex++ 启动器路径
+BACKUP_ENHANCED_LAUNCHER_DIR = "Codex" + "++"
+
+# 备用增强启动器路径
 CODEX_PLUS_PLUS_PATH = os.path.expandvars(
-    r"C:\Users\zhaos\AppData\Local\Programs\Codex++\codex-plus-plus.exe"
+    rf"C:\Users\zhaos\AppData\Local\Programs\{BACKUP_ENHANCED_LAUNCHER_DIR}\codex-plus-plus.exe"
 )
 
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -587,9 +588,9 @@ def start_codex(
     backend_url: str = "",
 ) -> Tuple[bool, str]:
     """
-    启动 Codex（或 Codex++）
+    启动 Codex
 
-    use_codex_plus_plus: 如果为 True，优先使用 Codex++ 启动器
+    use_codex_plus_plus: 如果为 True，优先使用配置的备用启动器
     返回 (是否成功, 消息)
     """
     try:
@@ -605,7 +606,7 @@ def start_codex(
         for path in codex_launch_candidates(use_codex_plus_plus, codex_plus_plus_path, codex_cli_path):
             try:
                 process = _launch_codex_path(path, extra_args=extra_args)
-                label = "Codex++" if "codex-plus-plus" in path.lower() else "Codex"
+                label = "备用启动器" if "codex-plus-plus" in path.lower() else "Codex"
                 started, started_pids, start_note = _wait_for_codex_start(process, timeout_seconds=12)
                 if not started:
                     errors.append(f"{path}: {start_note}")

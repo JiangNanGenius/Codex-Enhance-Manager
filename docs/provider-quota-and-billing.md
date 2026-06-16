@@ -1,14 +1,7 @@
 # Provider Quota And Billing Notes
 
-This document records the quota/balance methods we verified from the local
-CC Switch source tree and how Codex Enhance Manager maps them.
-
-## Source References
-
-- Balance probes: `research/cc-switch/src-tauri/src/services/balance.rs`
-- Coding Plan quota probes: `research/cc-switch/src-tauri/src/services/coding_plan.rs`
-- Official Codex OAuth quota: `research/cc-switch/src-tauri/src/services/subscription.rs`
-- CC Switch quota footer UI: `research/cc-switch/src/components/SubscriptionQuotaFooter.tsx`
+This document records the quota/balance methods verified for Codex Enhance
+Manager and how the app maps them.
 
 ## Official Codex Login
 

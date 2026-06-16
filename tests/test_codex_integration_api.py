@@ -1163,6 +1163,26 @@ class CodexIntegrationApiTest(unittest.TestCase):
         self.assertIn("plugin_marketplace_unlock", data)
         self.assertIn("force_plugin_install", data)
         self.assertIn("official_usage_visible", data)
+        self.assertTrue(data["codex_zh_cn_enhance_enabled"])
+
+    def test_codex_injection_quick_settings_updates_zh_cn_enhancement(self):
+        app = self._app()
+        self.provider_registry.list_providers.return_value = {
+            "success": True,
+            "focus_provider_id": "",
+            "providers": [],
+        }
+
+        response = app.test_client().post("/api/codex-injection/quick-settings", json={
+            "codex_zh_cn_enhance_enabled": False,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["success"])
+        self.last_config.update.assert_any_call({
+            "codex_zh_cn_enhance_enabled": False,
+        })
 
     def test_codex_injection_status_forces_plugin_unlock_off_for_official_oauth(self):
         app = self._app()
@@ -1216,6 +1236,7 @@ class CodexIntegrationApiTest(unittest.TestCase):
         self.assertFalse(quick["usage"]["official_usage_hidden_by_provider"])
         self.assertTrue(quick["settings"]["plugin_unlock_forced_off"])
         self.assertFalse(quick["settings"]["plugin_unlock_enabled"])
+        self.assertTrue(quick["settings"]["codex_zh_cn_enhance_enabled"])
 
     def test_disable_codex_enhance_provider_config_removes_only_local_routing(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,8 +1,7 @@
 """Codex Desktop enhancement injection through Chromium DevTools Protocol.
 
-The approach mirrors Codex++ at a smaller, app-owned scale: launch Codex with a
-remote debugging port, discover renderer targets, and inject a script with CDP.
-No Codex installation files are modified.
+Launch Codex with a remote debugging port, discover renderer targets, and
+inject a script with CDP. No Codex installation files are modified.
 """
 from __future__ import annotations
 
@@ -36,11 +35,14 @@ def _renderer_enhancement_runtime() -> str:
         pluginEntryUnlock: false,
         forcePluginInstall: false,
         hideOfficialUsageAlert: false,
+        zhCnEnhance: false,
       },
       observer: null,
       scanTimer: 0,
       statusTimer: 0,
       hiddenUsageNodes: new Set(),
+      zhCnTextNodes: new Map(),
+      zhCnAttrNodes: new Map(),
       marketplaceFilterPatched: false,
       responseJsonPatched: false,
       fetchPatched: false,
@@ -75,12 +77,72 @@ def _renderer_enhancement_runtime() -> str:
       ].join(',')));
     }
 
-    const quotaBannerText = /(你的\s*Codex\s*消息限额已用尽|Codex\s*消息限额已用尽|message\s+limit|usage\s+limit|you['’]?re\s+out\s+of\s+Codex\s+messages|out\s+of\s+Codex\s+messages)/i;
-    const quotaResetText = /(额度将于|继续使用\s*Codex|升级至\s*Plus|quota\s+will\s+reset|limit\s+will\s+reset|rate\s+limit\s+resets|resets?\s+on|continue\s+using\s+Codex|start\s+your\s+free\s+trial\s+of\s+Plus|upgrade\s+to\s+plus)/i;
+    const quotaBannerText = /(你的\s*Codex\s*消息限额已用尽|Codex\s*消息限额已用尽|message\s+limit|usage\s+limit|you['’]?re\s+out\s+of\s+Codex\s+messages|out\s+of\s+Codex\s+messages|你的\s*Codex\s*已用完|你的\s*Codex\s*消息\s*额度|你的\s*速率限制|速率限制\s*(?:将于|重置))/i;
+    const quotaResetText = /(额度将于|继续使用\s*Codex|升级至\s*Plus|quota\s+will\s+reset|limit\s+will\s+reset|rate\s+limit\s+resets|resets?\s+on|continue\s+using\s+Codex|start\s+your\s+free\s+trial\s+of\s+Plus|upgrade\s+to\s+plus|速率限制|将于\s*\d|重置)/i;
     const usageCardText = /(剩余\s*\d+%\s*使用量|重置频率|下次重置时间|remaining\s+\d+%\s+usage|usage\s+remaining|reset\s+frequency|next\s+reset)/i;
     const usageCardRequiredText = /剩余\s*\d+%\s*使用量|remaining\s+\d+%\s+usage|usage\s+remaining/i;
     const usageAlertText = /(Codex\s*(message|usage)?\s*(limit|quota)|message\s+limit|usage\s+limit|quota\s+will\s+reset|limit\s+will\s+reset|usage\s+remaining|remaining\s+\d+%\s+usage|消息限额|使用量|额度|下次重置|重置频率|剩余\s*\d+%\s*使用量)/i;
     const usageActionText = /(upgrade|plus|pricing|plan|reset|continue|quota|limit|升级|重置|继续使用|限额|额度|套餐)/i;
+    const zhCnTextMap = new Map([
+      ['Settings', '设置'],
+      ['New chat', '新建对话'],
+      ['New Chat', '新建对话'],
+      ['Delete', '删除'],
+      ['Export', '导出'],
+      ['Save', '保存'],
+      ['Cancel', '取消'],
+      ['Model', '模型'],
+      ['Models', '模型'],
+      ['API Key', 'API 密钥'],
+      ['Add', '添加'],
+      ['Remove', '移除'],
+      ['Copy', '复制'],
+      ['Edit', '编辑'],
+      ['Retry', '重试'],
+      ['Send', '发送'],
+      ['Stop', '停止'],
+      ['Continue', '继续'],
+      ['Approve', '批准'],
+      ['Reject', '拒绝'],
+      ['Allow', '允许'],
+      ['Deny', '拒绝'],
+      ['Always allow', '始终允许'],
+      ['Never allow', '从不允许'],
+      ['Plugins', '插件'],
+      ['Install', '安装'],
+      ['Uninstall', '卸载'],
+      ['History', '历史记录'],
+      ['Search', '搜索'],
+      ['Archive', '归档'],
+      ['Close', '关闭'],
+      ['Confirm', '确认'],
+      ['Done', '完成'],
+      ['Back', '返回'],
+      ['Next', '下一步'],
+      ['Previous', '上一步'],
+      ['Start', '开始'],
+      ['Restart', '重启'],
+      ['Refresh', '刷新'],
+      ['Usage', '用量'],
+      ['Context', '上下文'],
+      ['Tokens', 'Token'],
+      ['Requests', '请求'],
+      ['Cost', '费用'],
+      ['Provider', '供应商'],
+      ['Providers', '供应商'],
+      ['Smart Routing', '智能路由'],
+      ['Connection', '连接'],
+      ['Command', '命令'],
+      ['Terminal', '终端'],
+    ]);
+    const zhCnPlaceholderMap = new Map([
+      ['Ask Codex', '询问 Codex'],
+      ['Message Codex', '给 Codex 发送消息'],
+      ['Search chats', '搜索对话'],
+      ['Search', '搜索'],
+      ['API Key', 'API 密钥'],
+    ]);
+    const zhCnAttrTextMap = new Map([...zhCnTextMap, ...zhCnPlaceholderMap]);
 
     function bannerBox(node) {
       if (!visibleBox(node, 180, 16)) return false;
@@ -198,6 +260,131 @@ def _renderer_enhancement_runtime() -> str:
         target.setAttribute(hiddenUsageAttr + '-kind', kind);
         state.hiddenUsageNodes.add(target);
       }
+    }
+
+    function zhCnKeepPadding(value, translated) {
+      const original = String(value || '');
+      const match = original.match(/^(\s*)([\s\S]*?)(\s*)$/);
+      return match ? `${match[1]}${translated}${match[3]}` : translated;
+    }
+
+    function zhCnSkipElement(node) {
+      if (!(node instanceof HTMLElement)) return true;
+      if (node.closest('#codex-enhance-manager-menu')) return true;
+      if (inConversationContent(node)) return true;
+      return Boolean(node.closest('pre, code, kbd, samp, script, style, [contenteditable="true"]'));
+    }
+
+    function zhCnTranslatableScope(node) {
+      if (zhCnSkipElement(node)) return false;
+      const tag = node.tagName.toLowerCase();
+      if (/^(button|label|summary|h1|h2|h3|h4|h5|h6|a)$/.test(tag)) return true;
+      const role = normalizeText(node.getAttribute('role')).toLowerCase();
+      return /^(button|menuitem|tab|switch|checkbox|option|heading)$/.test(role);
+    }
+
+    function cemApplyZhCnTextNode(node) {
+      if (!node || node.nodeType !== Node.TEXT_NODE) return;
+      const text = normalizeText(node.nodeValue);
+      const existing = state.zhCnTextNodes.get(node);
+      if (existing) {
+        if (text === normalizeText(existing.original)) {
+          node.nodeValue = zhCnKeepPadding(node.nodeValue, existing.translated);
+        } else if (text !== normalizeText(existing.translated)) {
+          state.zhCnTextNodes.delete(node);
+        }
+        return;
+      }
+      const translated = zhCnTextMap.get(text);
+      if (!translated || !node.parentElement || zhCnSkipElement(node.parentElement)) return;
+      state.zhCnTextNodes.set(node, { original: node.nodeValue, translated });
+      node.nodeValue = zhCnKeepPadding(node.nodeValue, translated);
+    }
+
+    function cemApplyZhCnAttributes(root) {
+      const nodes = Array.from(root.querySelectorAll?.('[aria-label], [title], input[placeholder], textarea[placeholder]') || []);
+      for (const node of nodes) {
+        if (zhCnSkipElement(node)) continue;
+        for (const attr of ['aria-label', 'title', 'placeholder']) {
+          if (!node.hasAttribute?.(attr)) continue;
+          const current = node.getAttribute(attr);
+          const translated = (attr === 'placeholder' ? zhCnPlaceholderMap : zhCnAttrTextMap).get(normalizeText(current));
+          if (!translated) continue;
+          let attrs = state.zhCnAttrNodes.get(node);
+          if (!attrs) {
+            attrs = {};
+            state.zhCnAttrNodes.set(node, attrs);
+          }
+          if (!attrs[attr]) attrs[attr] = { original: current, translated };
+          node.setAttribute(attr, zhCnKeepPadding(current, translated));
+        }
+      }
+    }
+
+    function cemApplyZhCnEnhancement() {
+      if (!state.settings.zhCnEnhance) {
+        restoreZhCnEnhancement();
+        return;
+      }
+      const root = document.body || document.documentElement;
+      if (!root) return;
+      const scopes = Array.from(root.querySelectorAll([
+        'button',
+        'label',
+        'summary',
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'h5',
+        'h6',
+        'a',
+        '[role="button"]',
+        '[role="menuitem"]',
+        '[role="tab"]',
+        '[role="switch"]',
+        '[role="checkbox"]',
+        '[role="option"]',
+        '[role="heading"]',
+      ].join(','))).filter(zhCnTranslatableScope);
+      for (const scope of scopes) {
+        const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            if (!normalizeText(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+            if (!zhCnTextMap.has(normalizeText(node.nodeValue))) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        });
+        const textNodes = [];
+        let current = walker.nextNode();
+        while (current) {
+          textNodes.push(current);
+          current = walker.nextNode();
+        }
+        textNodes.forEach(cemApplyZhCnTextNode);
+      }
+      cemApplyZhCnAttributes(root);
+    }
+
+    function restoreZhCnEnhancement() {
+      for (const [node, record] of state.zhCnTextNodes) {
+        try {
+          if (node.isConnected && normalizeText(node.nodeValue) === record.translated) {
+            node.nodeValue = record.original;
+          }
+        } catch {}
+      }
+      state.zhCnTextNodes.clear();
+      for (const [node, attrs] of state.zhCnAttrNodes) {
+        try {
+          for (const [attr, record] of Object.entries(attrs || {})) {
+            if (node.isConnected && normalizeText(node.getAttribute(attr)) === record.translated) {
+              node.setAttribute(attr, record.original);
+            }
+          }
+        } catch {}
+      }
+      state.zhCnAttrNodes.clear();
     }
 
     function appServerRequestMethod(method, params) {
@@ -389,6 +576,7 @@ def _renderer_enhancement_runtime() -> str:
       state.scanTimer = 0;
       installPluginMarketplaceUnlock();
       scanOfficialUsageAlerts();
+      cemApplyZhCnEnhancement();
       unlockPluginEntry();
       unblockPluginInstallButtons();
     }
@@ -419,6 +607,8 @@ def _renderer_enhancement_runtime() -> str:
       state.settings.pluginEntryUnlock = enabled && Boolean(data && (data.plugin_entry_unlock || data.plugin_unlock_enabled));
       state.settings.forcePluginInstall = enabled && Boolean(data && (data.force_plugin_install || data.plugin_unlock_enabled));
       state.settings.hideOfficialUsageAlert = enabled && Boolean(data && data.hide_official_usage_alert);
+      state.settings.zhCnEnhance = enabled && Boolean(data && data.codex_zh_cn_enhance_enabled !== false);
+      if (!state.settings.zhCnEnhance) restoreZhCnEnhancement();
       scheduleScan(0);
     }
 
@@ -430,6 +620,7 @@ def _renderer_enhancement_runtime() -> str:
       state.observer?.disconnect();
       state.observer = null;
       restoreUsageAlerts();
+      restoreZhCnEnhancement();
       if (Array.prototype.__cemOriginalFilter) Array.prototype.filter = Array.prototype.__cemOriginalFilter;
       if (Response?.prototype?.__cemOriginalJson) Response.prototype.json = Response.prototype.__cemOriginalJson;
       if (window.__cemOriginalFetch) window.fetch = window.__cemOriginalFetch;
@@ -639,6 +830,11 @@ def build_injection_script(backend_url: str = "") -> str:
             <span>Plugin unlock</span>
             <input type="checkbox" data-cem-toggle="plugin_unlock_enabled" hidden>
             <span class="cem-switch" data-cem-switch="plugin_unlock_enabled"></span>
+          </label>
+          <label class="cem-toggle">
+            <span>Chinese UI</span>
+            <input type="checkbox" data-cem-toggle="codex_zh_cn_enhance_enabled" hidden>
+            <span class="cem-switch" data-cem-switch="codex_zh_cn_enhance_enabled"></span>
           </label>
           <div class="cem-muted" data-cem-plugin-unlock-note style="display:none;">Disabled for official login.</div>
         </div>
@@ -1099,6 +1295,11 @@ def build_injection_script(backend_url: str = "") -> str:
               <input type="checkbox" data-cem-toggle="plugin_unlock_enabled" hidden>
               <span class="cem-switch" data-cem-switch="plugin_unlock_enabled"></span>
             </label>
+            <label class="cem-toggle">
+              <span>Chinese UI</span>
+              <input type="checkbox" data-cem-toggle="codex_zh_cn_enhance_enabled" hidden>
+              <span class="cem-switch" data-cem-switch="codex_zh_cn_enhance_enabled"></span>
+            </label>
           </div>
           <div class="cem-muted" data-cem-plugin-unlock-note style="display:none; margin-top:6px;">Disabled for official login.</div>
         </div>
@@ -1521,7 +1722,7 @@ def inject_codex_enhancements(
                 target for target in targets
                 if target.get("webSocketDebuggerUrl") and target.get("type") in ("page", "webview")
             ]
-            # Sort so targets whose title/url contain "codex" are tried first (mirrors Codex++)
+            # Sort so targets whose title/url contain "codex" are tried first.
             page_targets.sort(key=lambda t: (
                 0 if "codex" in f"{t.get('title', '')} {t.get('url', '')}".lower() else 1,
             ))

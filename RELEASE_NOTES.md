@@ -1,5 +1,15 @@
 # Release Notes
 
+## v2.2.22 - 2026-06-16
+
+- Added a built-in Simplified Chinese Codex UI enhancement that translates common buttons, menus, labels, and input placeholders through the existing injection layer.
+- Kept the translation guard narrow: chat content, code blocks, message bodies, and editable content are skipped, and disabling the feature restores translated UI nodes where possible.
+- Added a quick-panel and settings-page toggle for the Chinese UI enhancement; it stays independent from Plugin Unlock and remains available in official-login mode.
+- Updated the official usage-alert hider to recognize newer Chinese rate-limit reset wording.
+- Cleaned user-facing quota notes and launch comments.
+- Verified with targeted Python/unit checks, generated injection JavaScript syntax check, README reference check, and packaged EXE smoke test. Full pytest was intentionally skipped because this environment has Codex-disruptive tests.
+- EXE: `74.25 MB`; SHA256: `9aeec8fc00150b126deb86b33b2965cf2acc512d527500cb987b794bb9fb7e65`.
+
 ## v2.2.21 - 2026-06-14
 
 - Fixed official-direct mode detection so an older third-party provider focus no longer makes the injected panel or floating monitor treat the active Codex session as third-party/proxy usage.

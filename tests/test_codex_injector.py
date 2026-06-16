@@ -22,6 +22,8 @@ class CodexInjectorTest(unittest.TestCase):
         self.assertIn('data-cem-refresh', script)
         self.assertIn('data-cem-toggle="codex_injection_enabled"', script)
         self.assertIn('data-cem-toggle="plugin_unlock_enabled"', script)
+        self.assertIn('data-cem-toggle="codex_zh_cn_enhance_enabled"', script)
+        self.assertIn("Chinese UI", script)
         self.assertIn("plugin_unlock_forced_off", script)
         self.assertIn("bridgeResult.data || bridgeResult", script)
         self.assertIn("cemQuotaPercentLine", script)
@@ -37,11 +39,21 @@ class CodexInjectorTest(unittest.TestCase):
         self.assertIn("quotaBannerText", script)
         self.assertIn("usageCardText", script)
         self.assertIn("usageCardRequiredText", script)
+        self.assertIn("速率限制", script)
         self.assertIn("patchPluginMarketplaceParams", script)
         self.assertIn("delete next.marketplaceKinds", script)
         self.assertIn("forcePluginInstall", script)
         self.assertIn("cem-force-install-unlocked", script)
         self.assertIn("pluginEntryUnlock", script)
+
+    def test_build_injection_script_contains_safe_zh_cn_enhancement(self):
+        script = build_injection_script("http://127.0.0.1:51234")
+
+        self.assertIn("zhCnTextMap", script)
+        self.assertIn("cemApplyZhCnEnhancement", script)
+        self.assertIn("restoreZhCnEnhancement", script)
+        self.assertIn("inConversationContent(node)", script)
+        self.assertIn("pre, code, kbd, samp", script)
 
     def test_parse_ws_url(self):
         host, port, path = _parse_ws_url("ws://127.0.0.1:51236/devtools/page/abc")

@@ -101,15 +101,18 @@ class ConfigThemeTest(unittest.TestCase):
         self.assertTrue(cfg._data["update_check_enabled"])
         self.assertFalse(cfg._data["update_include_prerelease"])
         self.assertFalse(cfg._data["plugin_unlock_enabled"])
+        self.assertTrue(cfg._data["codex_zh_cn_enhance_enabled"])
 
         cfg._data["update_check_enabled"] = "no"
         cfg._data["update_include_prerelease"] = "yes"
         cfg._data["plugin_unlock_enabled"] = "yes"
+        cfg._data["codex_zh_cn_enhance_enabled"] = "no"
         cfg._data["codex_sandbox_auto_repair_enabled"] = "yes"
         cfg._normalize_storage_defaults()
         self.assertFalse(cfg._data["update_check_enabled"])
         self.assertTrue(cfg._data["update_include_prerelease"])
         self.assertTrue(cfg._data["plugin_unlock_enabled"])
+        self.assertFalse(cfg._data["codex_zh_cn_enhance_enabled"])
         self.assertTrue(cfg._data["codex_sandbox_auto_repair_enabled"])
 
     def test_local_proxy_token_is_generated_when_missing_or_weak(self):

@@ -121,6 +121,7 @@ function readSettingsWizardDraft() {
         desktop_monitor_enabled: document.getElementById('setting-desktop-monitor-enabled')?.checked ?? latestSettings.desktop_monitor_enabled ?? true,
         desktop_monitor_opacity: parseInt(document.getElementById('setting-desktop-monitor-opacity')?.value, 10) || latestSettings.desktop_monitor_opacity || 88,
         codex_injection_enabled: document.getElementById('setting-codex-injection-enabled')?.checked ?? latestSettings.codex_injection_enabled ?? true,
+        codex_zh_cn_enhance_enabled: document.getElementById('setting-codex-zh-cn-enhance-enabled')?.checked ?? latestSettings.codex_zh_cn_enhance_enabled ?? true,
         plugin_unlock_enabled: document.getElementById('setting-plugin-unlock-enabled')?.checked ?? latestSettings.plugin_unlock_enabled ?? false,
         official_quota_enabled: document.getElementById('setting-official-quota-enabled')?.checked ?? latestSettings.official_quota_enabled ?? true,
     };
@@ -553,6 +554,7 @@ function populateSettingsForm(data) {
         'setting-update-include-prerelease': 'update_include_prerelease',
         'setting-debug-mode': 'debug_mode',
         'setting-codex-injection-enabled': 'codex_injection_enabled',
+        'setting-codex-zh-cn-enhance-enabled': 'codex_zh_cn_enhance_enabled',
         'setting-plugin-unlock-enabled': 'plugin_unlock_enabled',
         'setting-official-quota-enabled': 'official_quota_enabled',
         'setting-codex-goals-enabled': 'codex_goals_enabled',
@@ -1101,6 +1103,7 @@ async function saveSettings() {
         update_check_enabled: document.getElementById('setting-update-check-enabled')?.checked ?? true,
         update_include_prerelease: document.getElementById('setting-update-include-prerelease')?.checked ?? false,
         codex_injection_enabled: document.getElementById('setting-codex-injection-enabled')?.checked !== false,
+        codex_zh_cn_enhance_enabled: document.getElementById('setting-codex-zh-cn-enhance-enabled')?.checked !== false,
         plugin_unlock_enabled: document.getElementById('setting-plugin-unlock-enabled')?.checked || false,
         official_quota_enabled: document.getElementById('setting-official-quota-enabled')?.checked !== false,
         codex_goals_enabled: document.getElementById('setting-codex-goals-enabled')?.checked !== false,

@@ -2586,7 +2586,7 @@ def create_app() -> Flask:
 
     @app.route("/api/codex/start", methods=["POST"])
     def codex_start():
-        """启动 Codex/Codex++（启动前自动同步当前 provider/model）。"""
+        """启动 Codex（启动前自动同步当前 provider/model）。"""
         try:
             body = request.get_json(silent=True) or {}
             body["_backend_url"] = _current_backend_url()
@@ -3609,6 +3609,7 @@ def create_app() -> Flask:
                 allowed = {
                     "desktop_monitor_enabled",
                     "codex_injection_enabled",
+                    "codex_zh_cn_enhance_enabled",
                     "plugin_unlock_enabled",
                     "official_quota_enabled",
                 }
@@ -3693,6 +3694,7 @@ def create_app() -> Flask:
             settings = {
                 "desktop_monitor_enabled": _coerce_bool(config.get("desktop_monitor_enabled", True), True),
                 "codex_injection_enabled": _coerce_bool(config.get("codex_injection_enabled", True), True),
+                "codex_zh_cn_enhance_enabled": _coerce_bool(config.get("codex_zh_cn_enhance_enabled", True), True),
                 "plugin_unlock_enabled": bool(config.get("plugin_unlock_enabled", False)) and auth_mode != "official_oauth",
                 "plugin_unlock_forced_off": auth_mode == "official_oauth",
                 "official_quota_enabled": _coerce_bool(config.get("official_quota_enabled", True), True),
@@ -4454,6 +4456,7 @@ def create_app() -> Flask:
         return jsonify({
             "success": True,
             "enabled": _coerce_bool(config.get("codex_injection_enabled", True), True),
+            "codex_zh_cn_enhance_enabled": _coerce_bool(config.get("codex_zh_cn_enhance_enabled", True), True),
             "plugin_unlock_enabled": plugin_unlock,
             "plugin_marketplace_unlock": plugin_unlock,
             "plugin_entry_unlock": plugin_unlock,
