@@ -705,8 +705,8 @@ function readStartupSettingsFromForm() {
         startup_enabled: enabled,
         startup_mode: mode,
         startup_auto_elevate: autoElevate,
-        startup_task_name: document.getElementById('setting-startup-task-name')?.value || 'CodexEnhanceManager',
-        startup_shortcut_name: document.getElementById('setting-startup-shortcut-name')?.value || 'CodexEnhanceManager.cmd',
+        startup_task_name: document.getElementById('setting-startup-task-name')?.value || 'CodexEnhancedManager',
+        startup_shortcut_name: document.getElementById('setting-startup-shortcut-name')?.value || 'CodexEnhancedManager.cmd',
         startup_target_path: document.getElementById('setting-startup-target-path')?.value || '',
         startup_arguments: document.getElementById('setting-startup-arguments')?.value || '',
     };

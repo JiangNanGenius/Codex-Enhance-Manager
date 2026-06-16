@@ -20,8 +20,8 @@ START_CODEX_ARG = "--start-codex"
 SHORTCUT_KIND_NORMAL = "normal"
 SHORTCUT_KIND_START_CODEX = "start_codex"
 SHORTCUT_KINDS = {SHORTCUT_KIND_NORMAL, SHORTCUT_KIND_START_CODEX}
-NORMAL_SHORTCUT_NAME = "Codex Enhance Manager.lnk"
-START_CODEX_SHORTCUT_NAME = "Codex Enhance Manager - Start Codex.lnk"
+NORMAL_SHORTCUT_NAME = "Codex Enhanced Manager.lnk"
+START_CODEX_SHORTCUT_NAME = "Codex Enhanced Manager - Start Codex.lnk"
 
 
 @dataclass
@@ -159,7 +159,7 @@ class DesktopShortcutManager:
                 "target_path": target,
                 "arguments": args,
                 "working_directory": workdir,
-                "description": "Open Codex Enhance Manager.",
+                "description": "Open Codex Enhanced Manager.",
             })
         if start_codex:
             target, args, workdir = self.resolve_target_and_arguments([START_CODEX_ARG])
@@ -169,7 +169,7 @@ class DesktopShortcutManager:
                 "target_path": target,
                 "arguments": args,
                 "working_directory": workdir,
-                "description": "Start Codex through Codex Enhance Manager.",
+                "description": "Start Codex through Codex Enhanced Manager.",
             })
         return specs
 

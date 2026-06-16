@@ -51,7 +51,7 @@ class UpdateManagerTest(unittest.TestCase):
         opener = FakeOpener([
             {
                 "tag_name": "v2.2.3",
-                "name": "Codex History Manager v2.2.3",
+                "name": "Codex Enhanced Manager v2.2.3",
                 "html_url": "https://github.example/release",
                 "published_at": "2026-06-08T00:00:00Z",
                 "assets": [

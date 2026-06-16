@@ -345,7 +345,7 @@ const translations = {
     desktopShortcutCreated: 'Desktop shortcut created',
     desktopShortcutFailed: 'Failed to create desktop shortcut: ',
     // General
-    appTitle: 'Codex History Manager',
+    appTitle: 'Codex Enhanced Manager',
     appSubtitle: 'History · Sync · Backup',
     loading: 'Loading...',
     noData: 'No data available',

@@ -1,4 +1,4 @@
-# Codex Enhance Manager TODO
+# Codex Enhanced Manager TODO
 
 更新日期：2026-06-08
 

@@ -35,7 +35,7 @@ def test_default_store_path_uses_app_data():
 
     assert amr_registry.DEFAULT_STORE_PATH.name == "groups.json"
     assert amr_registry.DEFAULT_STORE_PATH.parent.name == "amr"
-    assert "Codex Enhance Manager" in str(amr_registry.DEFAULT_STORE_PATH)
+    assert "Codex Enhanced Manager" in str(amr_registry.DEFAULT_STORE_PATH)
 
 
 def test_default_group_question_corruption_is_repaired():

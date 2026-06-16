@@ -449,7 +449,7 @@ def _codex_model_info_from_entry(entry: Dict[str, Any], priority: int = 0) -> Di
     display = _catalog_segment(entry.get("codex_display_name") or entry.get("display_name"), entry.get("visible_model_id") or "model")
     provider_alias = _catalog_segment(entry.get("provider_visible_alias") or entry.get("provider_alias"), "provider")
     upstream = _catalog_segment(entry.get("upstream_model_id"), "model")
-    description = f"Routes to {provider_alias}/{upstream} through Codex Enhance Manager."
+    description = f"Routes to {provider_alias}/{upstream} through Codex Enhanced Manager."
     return _codex_model_info(
         slug=str(entry.get("codex_model_id") or ""),
         display_name=display,

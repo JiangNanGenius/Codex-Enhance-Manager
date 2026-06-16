@@ -65,7 +65,7 @@ class StartupManager:
     def __init__(
         self,
         *,
-        app_name: str = "Codex Enhance Manager",
+    app_name: str = "Codex Enhanced Manager",
         startup_dir: Optional[Path] = None,
         runner: Optional[Callable[[List[str]], Any]] = None,
         platform_name: Optional[str] = None,
@@ -246,7 +246,7 @@ class StartupManager:
         return Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
 
     def startup_entry_path(self, settings: Dict[str, Any]) -> Path:
-        name = settings.get("startup_shortcut_name") or "CodexEnhanceManager.cmd"
+        name = settings.get("startup_shortcut_name") or "CodexEnhancedManager.cmd"
         return self.startup_dir() / self._safe_cmd_name(name)
 
     def command_line(self, target: str, arguments: str = "") -> str:
@@ -412,16 +412,16 @@ class StartupManager:
         }
 
     def _safe_cmd_name(self, value: Any) -> str:
-        raw = Path(str(value or "CodexEnhanceManager.cmd").strip()).name
+        raw = Path(str(value or "CodexEnhancedManager.cmd").strip()).name
         if not raw:
-            raw = "CodexEnhanceManager.cmd"
+            raw = "CodexEnhancedManager.cmd"
         cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in raw)
         if not cleaned.lower().endswith(".cmd"):
             cleaned += ".cmd"
         return cleaned
 
     def _safe_task_name(self, value: Any) -> str:
-        raw = str(value or "CodexEnhanceManager").strip()
+        raw = str(value or "CodexEnhancedManager").strip()
         cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", " ", "."} else "_" for ch in raw)
         cleaned = " ".join(cleaned.split())
-        return cleaned or "CodexEnhanceManager"
+        return cleaned or "CodexEnhancedManager"

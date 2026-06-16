@@ -425,7 +425,7 @@ def _build_probe_payload(provider: Dict[str, Any], request_json: Optional[Dict[s
         return payload
     return {
         "model": _first_model_id(provider),
-        "input": "ping from Codex Enhance Manager dry-run probe",
+        "input": "ping from Codex Enhanced Manager dry-run probe",
         "stream": False,
     }
 

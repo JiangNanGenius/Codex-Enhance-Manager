@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="icon.png" alt="Codex Enhance Manager icon" width="96">
+  <img src="icon.png" alt="Codex Enhanced Manager icon" width="96">
 </p>
 
-<h1 align="center">Codex Enhance Manager</h1>
+<h1 align="center">Codex Enhanced Manager</h1>
 
 <p align="center">
   <strong>Keep Codex native. Add the control panel it should have had.</strong>
@@ -33,7 +33,7 @@
 
 ## Why This Exists
 
-Codex feels best when it behaves like Codex: logged in, local, fast to launch, and not buried under provider plumbing. Codex Enhance Manager keeps that native experience, then adds the parts power users keep reaching for: provider control, safe routing, readable usage, backup/repair tools, and a floating monitor that stays out of the way.
+Codex feels best when it behaves like Codex: logged in, local, fast to launch, and not buried under provider plumbing. Codex Enhanced Manager keeps that native experience, then adds the parts power users keep reaching for: provider control, safe routing, readable usage, backup/repair tools, and a floating monitor that stays out of the way.
 
 It is a Windows desktop app backed by a local service. Your settings, providers, request metadata, diagnostics, backups, and exports stay on your machine by default.
 
@@ -98,7 +98,7 @@ References: [openai/codex `responses.rs`](https://github.com/openai/codex/blob/m
 
 ## Safety Model
 
-- Local-first storage under `Documents/Codex Enhance Manager/`.
+- Local-first storage under `Documents/Codex Enhanced Manager/`.
 - API keys, bearer tokens, and sensitive headers are redacted in settings exports, diagnostics, and logs.
 - The local proxy requires a generated bearer token; settings show only a fingerprint.
 - Official direct mode is switch-only and does not enter local proxy routing or Smart Routing.

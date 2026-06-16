@@ -51,17 +51,17 @@ class StartupManagerTest(unittest.TestCase):
                 {
                     "startup_enabled": True,
                     "startup_mode": "startup_folder",
-                    "startup_shortcut_name": "CodexEnhanceManager.cmd",
-                    "startup_target_path": r"C:\Apps\CodexEnhanceManager.exe",
+                    "startup_shortcut_name": "CodexEnhancedManager.cmd",
+                    "startup_target_path": r"C:\Apps\CodexEnhancedManager.exe",
                     "startup_arguments": "--minimized",
                 },
                 confirmation=STARTUP_CONFIRMATION,
             )
 
             self.assertTrue(result["success"])
-            entry = Path(tmpdir) / "CodexEnhanceManager.cmd"
+            entry = Path(tmpdir) / "CodexEnhancedManager.cmd"
             self.assertTrue(entry.exists())
-            self.assertIn(r"C:\Apps\CodexEnhanceManager.exe", entry.read_text(encoding="utf-8"))
+            self.assertIn(r"C:\Apps\CodexEnhancedManager.exe", entry.read_text(encoding="utf-8"))
             self.assertEqual(calls[0][0], "schtasks.exe")
             self.assertIn("/Query", calls[0])
 
@@ -77,8 +77,8 @@ class StartupManagerTest(unittest.TestCase):
             settings = {
                 "startup_enabled": True,
                 "startup_mode": "scheduled_task_highest",
-                "startup_task_name": "CodexEnhanceManager",
-                "startup_target_path": r"C:\Apps\CodexEnhanceManager.exe",
+                "startup_task_name": "CodexEnhancedManager",
+                "startup_target_path": r"C:\Apps\CodexEnhancedManager.exe",
             }
             preview = manager.preview(settings)
             create_action = next(action for action in preview["actions"] if action["kind"] == "scheduled_task")
@@ -141,17 +141,17 @@ class StartupManagerTest(unittest.TestCase):
         def runner(args):
             calls.append(args)
             if "/Query" in args:
-                return CommandResult(returncode=0, stdout="TaskName: CodexEnhanceManager")
+                return CommandResult(returncode=0, stdout="TaskName: CodexEnhancedManager")
             return CommandResult(returncode=0, stdout="deleted")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             startup_dir = Path(tmpdir)
-            entry = startup_dir / "CodexEnhanceManager.cmd"
+            entry = startup_dir / "CodexEnhancedManager.cmd"
             entry.write_text("@echo off\r\n", encoding="utf-8")
             manager = StartupManager(startup_dir=startup_dir, runner=runner, platform_name="Windows")
 
             result = manager.remove(
-                {"startup_task_name": "CodexEnhanceManager", "startup_shortcut_name": "CodexEnhanceManager.cmd"},
+                {"startup_task_name": "CodexEnhancedManager", "startup_shortcut_name": "CodexEnhancedManager.cmd"},
                 confirmation=STARTUP_CONFIRMATION,
             )
 

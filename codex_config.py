@@ -498,7 +498,7 @@ def build_codex_enhance_provider_config(
         "model": str(proxy_model or "amr/default").strip() or "amr/default",
         "model_providers": {
             "codex_enhance_manager": {
-                "name": "Codex Enhance Manager",
+                "name": "Codex Enhanced Manager",
                 "base_url": base_url,
                 "wire_api": "responses",
                 "requires_openai_auth": True,

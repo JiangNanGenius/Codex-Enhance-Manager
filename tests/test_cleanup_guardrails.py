@@ -24,7 +24,7 @@ class CleanupGuardrailTest(unittest.TestCase):
     def test_uninstall_preview_marks_external_provider_store_manual(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            app_root = tmp / "Codex Enhance Manager"
+            app_root = tmp / "Codex Enhanced Manager"
             app_root.mkdir()
             external_store = tmp / "external" / "providers.json"
             external_store.parent.mkdir()
@@ -50,7 +50,7 @@ class CleanupGuardrailTest(unittest.TestCase):
     def test_cleanup_preview_targets_have_descriptions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            app_root = tmp / "Codex Enhance Manager"
+            app_root = tmp / "Codex Enhanced Manager"
             app_root.mkdir()
             temp_dir = app_root / "temp"
             temp_dir.mkdir()

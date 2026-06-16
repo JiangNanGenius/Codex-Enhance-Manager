@@ -1,5 +1,5 @@
 """
-PyInstaller 打包脚本 - 将 Codex History Manager (PyWebView 桌面版) 打包为单文件 EXE
+PyInstaller 打包脚本 - 将 Codex Enhanced Manager (PyWebView 桌面版) 打包为单文件 EXE
 """
 import argparse
 import hashlib
@@ -33,7 +33,7 @@ if not USER_DESKTOP_DIR.exists():
 EXE_NAME = "CodexHistoryManager.exe"
 RELEASE_MANIFEST_NAME = "release-manifest.json"
 LAST_COPIED_EXE: Path | None = None
-PYINSTALLER_RUNTIME_TMPDIR_TEMPLATE = r"%LOCALAPPDATA%\CodexEnhanceManager\pyi-runtime"
+PYINSTALLER_RUNTIME_TMPDIR_TEMPLATE = r"%LOCALAPPDATA%\CodexEnhancedManager\pyi-runtime"
 
 BUILD_DEPENDENCIES = [
     ("pyinstaller", "PyInstaller"),
@@ -198,7 +198,7 @@ def pyinstaller_runtime_tmpdir() -> Path:
     """Return a concrete one-file extraction directory for this build."""
     expanded = os.path.expandvars(PYINSTALLER_RUNTIME_TMPDIR_TEMPLATE)
     if "%" in expanded:
-        expanded = str(Path.home() / "AppData" / "Local" / "CodexEnhanceManager" / "pyi-runtime")
+        expanded = str(Path.home() / "AppData" / "Local" / "CodexEnhancedManager" / "pyi-runtime")
     return Path(expanded).expanduser().resolve()
 
 
@@ -512,7 +512,7 @@ def parse_args(argv: list[str] | None = None):
 if __name__ == "__main__":
     args = parse_args()
     print("=" * 60)
-    print("Codex History Manager (PyWebView) - 打包构建")
+    print("Codex Enhanced Manager (PyWebView) - 打包构建")
     print("=" * 60)
 
     if args.verify_only:

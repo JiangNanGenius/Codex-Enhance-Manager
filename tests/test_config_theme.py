@@ -1,5 +1,8 @@
 import copy
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from config import Config, DEFAULT_CONFIG
 from local_proxy_auth import local_proxy_token_is_strong
@@ -28,6 +31,38 @@ class ConfigThemeTest(unittest.TestCase):
         self.assertFalse(cfg._data["startup_auto_elevate"])
         self.assertEqual(cfg._data["startup_task_name"], DEFAULT_CONFIG["startup_task_name"])
         self.assertEqual(cfg._data["startup_shortcut_name"], DEFAULT_CONFIG["startup_shortcut_name"])
+
+    def test_startup_legacy_names_are_migrated(self):
+        cfg = Config.__new__(Config)
+        cfg._data = {
+            "startup_task_name": "CodexEnhanceManager",
+            "startup_shortcut_name": "CodexEnhanceManager.cmd",
+        }
+
+        cfg._normalize_storage_defaults()
+
+        self.assertEqual(cfg._data["startup_task_name"], "CodexEnhancedManager")
+        self.assertEqual(cfg._data["startup_shortcut_name"], "CodexEnhancedManager.cmd")
+
+    def test_app_storage_paths_are_migrated_to_new_display_name_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            legacy = root / "Codex Enhance Manager"
+            current = root / "Codex Enhanced Manager"
+            cfg = Config.__new__(Config)
+            cfg._data = {
+                "provider_store_path": str(legacy / "providers" / "providers.json"),
+                "request_log_path": str(legacy / "logs" / "proxy_requests.jsonl"),
+            }
+
+            with (
+                patch("config.legacy_app_data_dirs", return_value=[legacy]),
+                patch("config.app_data_dir", return_value=current),
+            ):
+                cfg._normalize_storage_defaults()
+
+            self.assertEqual(cfg._data["provider_store_path"], str(current / "providers" / "providers.json"))
+            self.assertEqual(cfg._data["request_log_path"], str(current / "logs" / "proxy_requests.jsonl"))
 
     def test_disabled_startup_clears_auto_elevate(self):
         cfg = Config.__new__(Config)

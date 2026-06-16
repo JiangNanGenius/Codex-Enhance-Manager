@@ -1,7 +1,7 @@
 """
 config.py - Local JSON settings management.
 
-Settings are stored under the user's Documents/Codex Enhance Manager folder.
+Settings are stored under the user's Documents/Codex Enhanced Manager folder.
 The class intentionally stays small and dependency-light because it is used by
 both the desktop app and tests.
 """
@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict
 
-from app_paths import LEGACY_CONFIG_FILE, app_data_path, ensure_app_dirs
+from app_paths import LEGACY_CONFIG_FILE, app_data_dir, app_data_path, ensure_app_dirs, legacy_app_data_dirs
 from approval_broker import DEFAULT_AUTO_APPROVAL_SYSTEM_PROMPT, normalize_auto_approval_system_prompt
 from local_proxy_auth import generate_local_proxy_bearer_token, local_proxy_token_is_strong
 from auto_detect import (
@@ -28,6 +28,32 @@ from auto_detect import (
 
 LEGACY_DEFAULT_BACKUP_DIR = str(Path.home() / "codex_backups")
 LEGACY_DEFAULT_PROVIDER_STORE = str(Path.home() / ".codex_enhance_manager" / "providers.json")
+APP_STORAGE_PATH_KEYS = (
+    "backup_dir",
+    "provider_store_path",
+    "temp_dir",
+    "diagnostics_dir",
+    "exports_dir",
+    "request_log_path",
+    "debug_log_path",
+)
+
+
+def _migrate_app_storage_path(value: Any) -> Any:
+    text = str(value or "").strip()
+    if not text:
+        return value
+    try:
+        path = Path(text).expanduser()
+    except (TypeError, ValueError):
+        return value
+    for legacy_dir in legacy_app_data_dirs():
+        try:
+            relative = path.resolve().relative_to(legacy_dir.resolve())
+        except (OSError, ValueError):
+            continue
+        return str(app_data_dir() / relative)
+    return value
 
 DEFAULT_CONFIG = {
     "db_path": "",
@@ -82,8 +108,8 @@ DEFAULT_CONFIG = {
     "startup_enabled": False,
     "startup_mode": "disabled",
     "startup_auto_elevate": False,
-    "startup_task_name": "CodexEnhanceManager",
-    "startup_shortcut_name": "CodexEnhanceManager.cmd",
+    "startup_task_name": "CodexEnhancedManager",
+    "startup_shortcut_name": "CodexEnhancedManager.cmd",
     "startup_target_path": "",
     "startup_arguments": "",
     "proxy_port": 51235,
@@ -157,9 +183,11 @@ class Config:
                 saved = json.load(f)
             if isinstance(saved, dict):
                 self._data.update(saved)
+            before_normalize = copy.deepcopy(self._data)
             self._normalize_storage_defaults()
+            normalized_changed = before_normalize != self._data
             token_changed = self._ensure_local_proxy_token()
-            if (source == LEGACY_CONFIG_FILE and not CONFIG_FILE.exists()) or token_changed:
+            if (source == LEGACY_CONFIG_FILE and not CONFIG_FILE.exists()) or token_changed or normalized_changed:
                 self.save()
         except Exception:
             try:
@@ -252,15 +280,9 @@ class Config:
             self._data["backup_dir"] = DEFAULT_CONFIG["backup_dir"]
         if self._data.get("provider_store_path") == LEGACY_DEFAULT_PROVIDER_STORE:
             self._data["provider_store_path"] = DEFAULT_CONFIG["provider_store_path"]
-        for key in (
-            "backup_dir",
-            "provider_store_path",
-            "temp_dir",
-            "diagnostics_dir",
-            "exports_dir",
-            "request_log_path",
-            "debug_log_path",
-        ):
+        for key in APP_STORAGE_PATH_KEYS:
+            if self._data.get(key):
+                self._data[key] = _migrate_app_storage_path(self._data[key])
             if not self._data.get(key):
                 self._data[key] = DEFAULT_CONFIG[key]
         if not isinstance(self._data.get("theme_custom"), dict):
@@ -358,6 +380,10 @@ class Config:
             self._data["startup_auto_elevate"] = True
         for key in ("startup_task_name", "startup_shortcut_name", "startup_target_path", "startup_arguments"):
             self._data[key] = str(self._data.get(key) or DEFAULT_CONFIG[key])
+        if self._data.get("startup_task_name") == "CodexEnhanceManager":
+            self._data["startup_task_name"] = DEFAULT_CONFIG["startup_task_name"]
+        if self._data.get("startup_shortcut_name") == "CodexEnhanceManager.cmd":
+            self._data["startup_shortcut_name"] = DEFAULT_CONFIG["startup_shortcut_name"]
         try:
             self._data["exchange_rate_ttl_hours"] = max(int(self._data.get("exchange_rate_ttl_hours", 24)), 1)
         except (TypeError, ValueError):

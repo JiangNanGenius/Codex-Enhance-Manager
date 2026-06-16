@@ -60,7 +60,7 @@ class ConfigTOMLTest(unittest.TestCase):
                 "model_provider": "codex_enhance_manager",
                 "model_providers": {
                     "codex_enhance_manager": {
-                        "name": "Codex Enhance Manager",
+                        "name": "Codex Enhanced Manager",
                         "base_url": "http://127.0.0.1:51234/v1",
                         "wire_api": "responses",
                         "requires_openai_auth": True,

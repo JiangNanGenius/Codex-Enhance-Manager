@@ -1,5 +1,5 @@
 /**
- * providers.js - Codex Enhance Manager provider registry UI.
+ * providers.js - Codex Enhanced Manager provider registry UI.
  * Provider Registry 前端渲染与交互逻辑。
  *
  * 设计意图：

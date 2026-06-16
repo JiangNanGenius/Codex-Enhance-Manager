@@ -835,7 +835,7 @@ def build_injection_script(backend_url: str = "") -> str:
   const root = document.createElement('div');
   root.id = rootId;
   root.innerHTML = `
-    <button type="button" aria-label="Codex Enhance Manager">Codex Enhance</button>
+    <button type="button" aria-label="Codex Enhanced Manager">Codex Enhanced</button>
     <div class="cem-panel">
       <div class="cem-head">
         <div class="cem-title">Quick Settings</div>
@@ -1286,7 +1286,7 @@ def build_injection_script(backend_url: str = "") -> str:
   const root = document.createElement('div');
   root.id = rootId;
   root.innerHTML = `
-    <button type="button" class="cem-launch" aria-label="Codex Enhance Manager" title="Codex Enhance Manager"><span class="cem-dot"></span></button>
+    <button type="button" class="cem-launch" aria-label="Codex Enhanced Manager" title="Codex Enhanced Manager"><span class="cem-dot"></span></button>
     <div class="cem-panel">
       <div class="cem-head">
         <div>

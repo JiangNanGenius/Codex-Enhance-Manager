@@ -54,7 +54,7 @@ from desktop_shortcuts import START_CODEX_ARG
 DEFAULT_PORT = 51234
 PORT = DEFAULT_PORT
 URL = f"http://127.0.0.1:{PORT}"
-APP_TITLE = "Codex 历史记录管理器"
+APP_TITLE = "Codex Enhanced Manager"
 SMOKE_TEST_ARG = "--smoke-test"
 DESKTOP_LOG_RETAIN_COUNT = 3
 DESKTOP_LAUNCH_ACTION_SHOW_WINDOW = "show_window"
@@ -146,7 +146,7 @@ def _configure_desktop_run_logging(retain_count: int = DESKTOP_LOG_RETAIN_COUNT)
         desktop_log_handle = open(log_path, "w", encoding="utf-8", buffering=1)
         sys.stdout = desktop_log_handle
         sys.stderr = desktop_log_handle
-        print(f"Codex Enhance Manager started at {datetime.now().isoformat(timespec='seconds')}")
+        print(f"Codex Enhanced Manager started at {datetime.now().isoformat(timespec='seconds')}")
         print(f"argv={sys.argv}")
         return {
             "success": True,
@@ -1691,7 +1691,7 @@ def _setup_tray(window):
         )
 
     tray_icon = pystray.Icon(
-        "CodexHistoryManager",
+        "CodexEnhancedManager",
         image,
         APP_TITLE,
         menu=build_menu(),
@@ -1909,10 +1909,10 @@ def main():
     if not _acquire_single_instance_lock():
         if not _request_existing_desktop_action(pending_launch_action):
             _show_existing_desktop_window()
-        print("Codex Enhance Manager is already running or still shutting down.")
+        print("Codex Enhanced Manager is already running or still shutting down.")
         return
     if _existing_instance_responds(pending_launch_action):
-        print("Codex Enhance Manager is already running.")
+        print("Codex Enhanced Manager is already running.")
         return
     try:
         _set_backend_port(_select_backend_port(DEFAULT_PORT))

@@ -3,7 +3,7 @@ providers.py - Local provider registry and first-pass model catalog preview.
 本地 Provider Registry 与模型目录预览模块。
 
 设计意图：
-  - 本模块是 Codex Enhance Manager 的「配置中心」，负责管理所有第三方
+  - 本模块是 Codex Enhanced Manager 的「配置中心」，负责管理所有第三方
     Provider（OpenAI、Anthropic、国内厂商等）的元数据、认证、模型列表。
   - 与 Codex 官方配置解耦：本模块**绝不**直接写入 Codex 的 auth.json 或
     config.toml；所有写操作只发生在本地 JSON store（providers.json）。
@@ -54,7 +54,7 @@ from reasoning_policy import build_model_reasoning_effort_profile
 
 # Schema version：当数据结构发生不兼容变更时递增，用于未来迁移逻辑。
 SCHEMA_VERSION = 1
-# 默认存储路径：用户文档目录下的 Codex Enhance Manager/providers/providers.json。
+# 默认存储路径：用户文档目录下的 Codex Enhanced Manager/providers/providers.json。
 DEFAULT_STORE_PATH = app_data_path("providers", "providers.json")
 
 CATALOG_VISIBILITY = {"hidden", "focused_only", "always_visible", "selected_models"}
@@ -601,7 +601,7 @@ class ProviderRegistry:
         生成 Unified Model Catalog（UMC）预览。
 
         设计意图：
-          - 这是 Codex Enhance Manager 的核心功能之一：在真正写入 Codex 之前，
+          - 这是 Codex Enhanced Manager 的核心功能之一：在真正写入 Codex 之前，
             让用户看到「哪些模型会出现在 Codex 的模型列表中」。
           - 支持四种 visibility 策略：hidden（隐藏）、focused_only（仅焦点时显示）、
             always_visible（常驻）、selected_models（仅选中模型显示）。

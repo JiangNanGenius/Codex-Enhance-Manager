@@ -1,5 +1,14 @@
 # Release Notes
 
+## v2.2.26 - 2026-06-17
+
+- Renamed the desktop app display name, window title, tray identity, shortcuts, startup defaults, and Codex provider label to `Codex Enhanced Manager`.
+- Added automatic migration from the old documents data directory to `Documents/Codex Enhanced Manager` while preserving the old directory for compatibility and rollback.
+- Migrates app-storage paths in `config.json` so providers, request logs, diagnostics, temp files, exports, and backups point to the new data directory.
+- Migrates old startup task and shortcut names to `CodexEnhancedManager` / `CodexEnhancedManager.cmd`.
+- Verified with targeted path/config/startup/shortcut/Codex config tests, Python compile checks, JavaScript syntax checks, local config migration, and packaged EXE smoke test. Full pytest was intentionally skipped because this environment has Codex-disruptive tests.
+- EXE: `71.34 MB`; SHA256: `cb34d2a4915f06308e992f06f16d5c8c933c8086f28148793c55806e1362992f`.
+
 ## v2.2.25 - 2026-06-17
 
 - Fixed stale Smart Routing data causing `No candidate supports required capabilities` when Codex requests custom tools or native Responses capabilities.

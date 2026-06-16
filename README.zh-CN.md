@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="icon.png" alt="Codex Enhance Manager 图标" width="96">
+  <img src="icon.png" alt="Codex Enhanced Manager 图标" width="96">
 </p>
 
-<h1 align="center">Codex Enhance Manager</h1>
+<h1 align="center">Codex Enhanced Manager</h1>
 
 <p align="center">
   <strong>让 Codex 尽量保持原生，同时补上它本该有的控制台。</strong>
@@ -35,7 +35,7 @@
 
 Codex 最舒服的状态应该是：官方登录态还在，启动像原生一样顺，历史记录能看，用量能看，供应商和模型可以换，但不会把配置文件搞成一团。
 
-Codex Enhance Manager 做的就是这件事：尽量不破坏 Codex 原生体验，把供应商、路由、智能路由、用量统计、备份恢复、配置修复和悬浮窗放进一个本地 Windows 桌面工具里。
+Codex Enhanced Manager 做的就是这件事：尽量不破坏 Codex 原生体验，把供应商、路由、智能路由、用量统计、备份恢复、配置修复和悬浮窗放进一个本地 Windows 桌面工具里。
 
 所有配置、供应商、请求元数据、诊断包、备份和导出默认都留在本机。
 
@@ -100,7 +100,7 @@ Codex Enhance Manager 做的就是这件事：尽量不破坏 Codex 原生体验
 
 ## 安全边界
 
-- 默认数据目录是 `Documents/Codex Enhance Manager/`。
+- 默认数据目录是 `Documents/Codex Enhanced Manager/`。
 - API Key、Bearer Token 和敏感 Header 会在设置导出、诊断和日志里脱敏。
 - 本地代理默认生成高熵 bearer token；设置页只显示指纹。
 - 官方直连是“只切换”的状态，不进入本地代理路由，也不参与智能路由。
