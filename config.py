@@ -1,7 +1,7 @@
 """
 config.py - Local JSON settings management.
 
-Settings are stored under the user's Documents/Codex Enhanced Manager folder.
+Settings use the platform app-data folder (Documents on Windows, Application Support on macOS).
 The class intentionally stays small and dependency-light because it is used by
 both the desktop app and tests.
 """
@@ -125,6 +125,10 @@ DEFAULT_CONFIG = {
     "codex_cdp_port": 51236,
     "codex_injection_enabled": True,
     "codex_zh_cn_enhance_enabled": True,
+    "codex_paste_fix_enabled": True,
+    "codex_plugin_auto_expand_enabled": True,
+    "codex_thread_id_enabled": True,
+    "codex_stepwise_enabled": False,
     "codex_last_start_mode": "",
     "history_sync_signature": "",
     "history_sync_last_at": "",
@@ -361,6 +365,10 @@ class Config:
             "plugin_unlock_enabled",
             "codex_injection_enabled",
             "codex_zh_cn_enhance_enabled",
+            "codex_paste_fix_enabled",
+            "codex_plugin_auto_expand_enabled",
+            "codex_thread_id_enabled",
+            "codex_stepwise_enabled",
             "official_quota_enabled",
             "codex_goals_enabled",
             "codex_sandbox_auto_repair_enabled",
@@ -399,7 +407,7 @@ class Config:
         ):
             if key not in self._data:
                 self._data[key] = copy.deepcopy(DEFAULT_CONFIG[key])
-        if self._data.get("startup_mode") not in {"disabled", "startup_folder", "scheduled_task_highest"}:
+        if self._data.get("startup_mode") not in {"disabled", "startup_folder", "scheduled_task_highest", "launch_agent"}:
             self._data["startup_mode"] = DEFAULT_CONFIG["startup_mode"]
         self._data["startup_enabled"] = bool(self._data.get("startup_enabled"))
         self._data["startup_auto_elevate"] = bool(self._data.get("startup_auto_elevate"))

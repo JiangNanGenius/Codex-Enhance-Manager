@@ -93,6 +93,8 @@ function navigateTo(page) {
             }, 100);
             break;
         case 'sessions': loadSessions(); break;
+        case 'extensions': loadExtensionsPage(); break;
+        case 'workflows': loadWorkflowsPage(); break;
         case 'sync': loadSyncStatus(); break;
         case 'backup': loadBackups(); break;
         case 'diagnostics': loadDiagnosticsPage(); break;

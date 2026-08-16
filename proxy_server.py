@@ -44,6 +44,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from capabilities import effective_provider_capabilities, merge_provider_model_capabilities
+
 from anthropic_adapter import (
     AnthropicConversionError,
     AnthropicSseToResponsesConverter,
@@ -99,7 +101,7 @@ from reasoning_policy import (
 
 DEFAULT_PROXY_PORT = 51235
 PORT_BACKOFF_SCAN_LIMIT = 50
-MAX_BODY_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_BODY_SIZE = 32 * 1024 * 1024  # audio uploads and base64 images remain bounded
 DEFAULT_UPSTREAM_TIMEOUT = 120  # 秒
 
 
@@ -693,6 +695,8 @@ def _find_enabled_model(provider: Dict[str, Any], model_id: str) -> Optional[Dic
             continue
         if str(model.get("id") or "").strip() == requested:
             return model
+        if str(model.get("upstream_model_id") or "").strip() == requested:
+            return model
         if requested_lower and requested_lower in _model_aliases_lower(model):
             return model
     return None
@@ -791,6 +795,9 @@ def _model_aliases(model: Dict[str, Any]) -> List[str]:
     aliases = model.get("aliases") or model.get("model_aliases")
     if isinstance(aliases, list):
         values.extend(str(item).strip() for item in aliases if str(item).strip())
+    route_aliases = model.get("route_aliases") or model.get("routing_aliases")
+    if isinstance(route_aliases, list):
+        values.extend(str(item).strip() for item in route_aliases if str(item).strip())
     return values
 
 
@@ -831,6 +838,12 @@ def _extract_model_id_for_upstream(request_json: Dict[str, Any], provider: Dict[
     else:
         upstream_model = raw_model
 
+    requested_model = _find_enabled_model(provider, upstream_model)
+    if requested_model:
+        configured_upstream = str(requested_model.get("upstream_model_id") or "").strip()
+        if configured_upstream:
+            return configured_upstream
+
     aliases = _provider_alias_map(provider)
     if upstream_model in aliases:
         return aliases[upstream_model]
@@ -845,6 +858,171 @@ def _extract_model_id_for_upstream(request_json: Dict[str, Any], provider: Dict[
         except re.error:
             continue
     return upstream_model
+
+
+def _collect_image_urls(value: Any, found: Optional[List[str]] = None) -> List[str]:
+    """Collect OpenAI/Responses image references without dereferencing them locally."""
+    result = found if found is not None else []
+    if isinstance(value, list):
+        for item in value:
+            _collect_image_urls(item, result)
+        return result
+    if not isinstance(value, dict):
+        return result
+    block_type = str(value.get("type") or "").lower()
+    if block_type in {"image_url", "input_image", "image"}:
+        image_value = value.get("image_url") or value.get("url") or value.get("source")
+        if isinstance(image_value, dict):
+            image_value = image_value.get("url") or image_value.get("data")
+        image_text = str(image_value or "").strip()
+        if image_text and image_text not in result:
+            result.append(image_text)
+    for nested in value.values():
+        if isinstance(nested, (dict, list)):
+            _collect_image_urls(nested, result)
+    return result
+
+
+def _remove_image_blocks(value: Any) -> Any:
+    if isinstance(value, list):
+        cleaned: List[Any] = []
+        for item in value:
+            if isinstance(item, dict) and str(item.get("type") or "").lower() in {"image_url", "input_image", "image"}:
+                continue
+            cleaned.append(_remove_image_blocks(item))
+        return cleaned
+    if isinstance(value, dict):
+        return {key: _remove_image_blocks(item) for key, item in value.items()}
+    return value
+
+
+def _append_vlm_analysis(request_json: Dict[str, Any], analysis: str) -> None:
+    note = f"Image analysis supplied by the configured VLM:\n{analysis}"
+    messages = request_json.get("messages")
+    if isinstance(messages, list):
+        messages.append({"role": "user", "content": note})
+        return
+    response_input = request_json.get("input")
+    item = {"role": "user", "content": [{"type": "input_text", "text": note}]}
+    if isinstance(response_input, list):
+        response_input.append(item)
+    elif isinstance(response_input, str):
+        request_json["input"] = response_input + "\n\n" + note
+    else:
+        request_json["input"] = [item]
+
+
+def _vlm_analyze_images(image_urls: List[str], route_model: Dict[str, Any]) -> tuple[str, str]:
+    provider_id = str(route_model.get("vlm_provider_id") or "").strip()
+    model_id = str(route_model.get("vlm_model") or "").strip()
+    if not provider_id or not model_id:
+        return "", "VLM mode requires both vlm_provider_id and vlm_model; original images were preserved."
+    providers = _load_providers_with_secrets()
+    vlm_provider = _find_enabled_provider_by_id(providers, provider_id)
+    if not vlm_provider:
+        return "", f"Configured VLM provider '{provider_id}' is unavailable; original images were preserved."
+    base_url = str(vlm_provider.get("base_url") or "").rstrip("/")
+    if not base_url:
+        return "", f"Configured VLM provider '{provider_id}' has no base_url; original images were preserved."
+    content: List[Dict[str, Any]] = [{"type": "text", "text": "Analyze these images for the downstream coding assistant. Describe relevant text, UI, structure, and details precisely."}]
+    for url in image_urls[:8]:
+        content.append({"type": "image_url", "image_url": {"url": url}})
+    payload = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": content}],
+        "stream": False,
+    }
+    try:
+        response = _upstream_request_for_provider(
+            vlm_provider,
+            "POST",
+            f"{base_url}/chat/completions",
+            _build_upstream_headers(vlm_provider),
+            body=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            stream=False,
+        )
+        decoded = json.loads(response.read().decode("utf-8", errors="replace"))
+        choices = decoded.get("choices") if isinstance(decoded, dict) else None
+        message = choices[0].get("message", {}) if isinstance(choices, list) and choices else {}
+        analysis = str(message.get("content") or "").strip() if isinstance(message, dict) else ""
+        if analysis:
+            return analysis, "vlm_analysis_applied"
+        return "", "Configured VLM returned no analysis; original images were preserved."
+    except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, OSError, ValueError, TypeError) as exc:
+        return "", f"Configured VLM failed ({type(exc).__name__}); original images were preserved."
+
+
+def _apply_image_handling(request_json: Dict[str, Any], route_model: Dict[str, Any]) -> tuple[Dict[str, Any], str]:
+    image_urls = _collect_image_urls(request_json)
+    if not image_urls:
+        return request_json, ""
+    mode = str(route_model.get("image_handling") or "send_as_is").strip().lower()
+    if mode == "strip":
+        return _remove_image_blocks(request_json), "images_removed_by_model_policy"
+    if mode != "vlm":
+        return request_json, "images_forwarded_as_is"
+    analysis, diagnostic = _vlm_analyze_images(image_urls, route_model)
+    if not analysis:
+        _debug_log("image_policy.vlm_fallback", diagnostic=diagnostic, image_count=len(image_urls))
+        return request_json, "vlm_unavailable_original_preserved"
+    transformed = _remove_image_blocks(request_json)
+    _append_vlm_analysis(transformed, analysis)
+    return transformed, diagnostic
+
+
+def _multipart_text_field(body: bytes, field_name: str) -> str:
+    marker = f'name="{field_name}"'.encode("utf-8")
+    offset = body.find(marker)
+    if offset < 0:
+        return ""
+    value_start = body.find(b"\r\n\r\n", offset)
+    if value_start < 0:
+        return ""
+    value_start += 4
+    value_end = body.find(b"\r\n", value_start)
+    if value_end < 0:
+        return ""
+    return body[value_start:value_end].decode("utf-8", errors="replace").strip()
+
+
+def _replace_multipart_text_field(body: bytes, field_name: str, value: str) -> bytes:
+    marker = f'name="{field_name}"'.encode("utf-8")
+    offset = body.find(marker)
+    if offset < 0:
+        return body
+    value_start = body.find(b"\r\n\r\n", offset)
+    if value_start < 0:
+        return body
+    value_start += 4
+    value_end = body.find(b"\r\n", value_start)
+    if value_end < 0:
+        return body
+    return body[:value_start] + value.encode("utf-8") + body[value_end:]
+
+
+def _resolve_audio_transcription_route(model_id: str) -> Dict[str, Any]:
+    if model_id:
+        route = _resolve_provider_route_for_model(model_id, {"capabilities": ["audio"]})
+        if route.get("success"):
+            provider = route.get("provider") if isinstance(route.get("provider"), dict) else {}
+            model = route.get("model") if isinstance(route.get("model"), dict) else {}
+            caps = merge_provider_model_capabilities(provider, model)
+            if caps.get("audio") or effective_provider_capabilities(provider).get("audio"):
+                return route
+    store = _load_provider_store_with_secrets()
+    for provider in _prioritize_focus_provider(store.get("providers", []), store.get("focus_provider_id", "")):
+        if not provider_allows_local_routing(provider) or not effective_provider_capabilities(provider).get("audio"):
+            continue
+        for model in provider.get("models", []):
+            if isinstance(model, dict) and model.get("enabled", True) and merge_provider_model_capabilities(provider, model).get("audio"):
+                return {
+                    "success": True,
+                    "provider": provider,
+                    "model": model,
+                    "upstream_model": str(model.get("upstream_model_id") or model.get("id") or ""),
+                    "route_explanation": ["Focused audio-capable provider fallback."],
+                }
+    return {"success": False, "error": "No enabled audio transcription provider/model is configured."}
 
 
 def _build_upstream_headers(provider: Dict[str, Any]) -> Dict[str, str]:
@@ -1462,6 +1640,9 @@ def _send_error(self: BaseHTTPRequestHandler, status: int, message: str, error_t
     print(f"[PROXY ERROR] status={status} type={error_type} message={message}", file=sys.stderr)
     self.send_response(status)
     self.send_header("Content-Type", "application/json; charset=utf-8")
+    diagnostic_sender = getattr(self, "_send_image_diagnostic_header", None)
+    if callable(diagnostic_sender):
+        diagnostic_sender()
     self.end_headers()
     payload = json.dumps({"error": {"message": message, "type": error_type}}, ensure_ascii=False)
     self.wfile.write(payload.encode("utf-8"))
@@ -1483,7 +1664,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
         # Keep proxy requests visible in desktop.log for troubleshooting
         print(f"[PROXY] {format % args}", file=sys.stderr)
 
+    def _send_image_diagnostic_header(self) -> None:
+        diagnostic = str(getattr(self, "_image_proxy_diagnostic", "") or "").strip()
+        if diagnostic:
+            self.send_header("X-Codex-Image-Proxy-Diagnostic", diagnostic[:160])
+
     def do_GET(self) -> None:
+        self._image_proxy_diagnostic = ""
         if not _inbound_proxy_authorized(self.headers):
             _send_error(self, 401, "Local proxy bearer token is missing or invalid.", "invalid_proxy_token")
             return
@@ -1497,6 +1684,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         _send_error(self, 404, "Not found", "not_found")
 
     def do_DELETE(self) -> None:
+        self._image_proxy_diagnostic = ""
         if not _inbound_proxy_authorized(self.headers):
             _send_error(self, 401, "Local proxy bearer token is missing or invalid.", "invalid_proxy_token")
             return
@@ -1507,6 +1695,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         _send_error(self, 404, "Not found", "not_found")
 
     def do_POST(self) -> None:
+        self._image_proxy_diagnostic = ""
         if not _inbound_proxy_authorized(self.headers):
             _send_error(self, 401, "Local proxy bearer token is missing or invalid.", "invalid_proxy_token")
             return
@@ -1531,11 +1720,66 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if is_chat_completions_proxy_path(path):
             self._handle_chat_completions(body)
             return
+        if path.rstrip("/") == "/v1/audio/transcriptions":
+            self._handle_audio_transcription(body)
+            return
         if is_media_proxy_path(path):
             self._handle_media(body, method="POST")
             return
 
         _send_error(self, 404, "Not found", "not_found")
+
+    def _handle_audio_transcription(self, body: bytes) -> None:
+        """Forward an OpenAI-compatible multipart transcription request unchanged except for model routing."""
+        content_type = str(self.headers.get("Content-Type") or "")
+        if "multipart/form-data" not in content_type.lower():
+            _send_error(self, 400, "Audio transcription requires multipart/form-data.", "invalid_request_error")
+            return
+        requested_model = _multipart_text_field(body, "model")
+        route = _resolve_audio_transcription_route(requested_model)
+        if not route.get("success"):
+            _send_error(self, 404, str(route.get("error") or "Audio route unavailable."), "audio_provider_not_found")
+            return
+        provider = route.get("provider") if isinstance(route.get("provider"), dict) else {}
+        base_url = str(provider.get("base_url") or "").rstrip("/")
+        if not base_url:
+            _send_error(self, 502, "Audio provider has no base_url configured.", "provider_misconfigured")
+            return
+        upstream_model = str(route.get("upstream_model") or requested_model).strip()
+        upstream_body = _replace_multipart_text_field(body, "model", upstream_model) if upstream_model else body
+        headers = _build_upstream_headers(provider)
+        headers["Content-Type"] = content_type
+        log_context = _make_request_log_context(
+            "audio/transcriptions",
+            "POST",
+            provider,
+            model=requested_model,
+            upstream_model=upstream_model,
+            stream=False,
+            route_explanation=_route_explanation_text(route, "audio transcription provider route"),
+        )
+        try:
+            upstream_resp = _upstream_request_for_provider(
+                provider,
+                "POST",
+                f"{base_url}/audio/transcriptions",
+                headers,
+                body=upstream_body,
+                stream=False,
+            )
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read() if exc.fp else b"{}"
+            _record_request_log(log_context, exc.code, error_type="upstream_http_error", error_message=error_body.decode("utf-8", errors="replace"))
+            self.send_response(exc.code)
+            self.send_header("Content-Type", exc.headers.get("Content-Type", "application/json"))
+            self.end_headers()
+            self.wfile.write(error_body)
+            return
+        except (urllib.error.URLError, socket.timeout, OSError) as exc:
+            _record_request_log(log_context, 502, error_type="upstream_error", error_message=str(exc))
+            _send_error(self, 502, f"Audio upstream connection failed: {exc}", "upstream_error")
+            return
+        self._forward_non_streaming(upstream_resp, log_context=log_context)
 
     def _handle_models(self) -> None:
         """
@@ -1603,6 +1847,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _send_route_error(self, route)
             return
         provider = route["provider"]
+        request_json, self._image_proxy_diagnostic = _apply_image_handling(
+            request_json,
+            route.get("model") if isinstance(route.get("model"), dict) else {},
+        )
         _debug_log("chat.route", model_id=model_id, route_type=route.get("route_type"), provider_id=provider.get("id"), upstream_model=route.get("upstream_model"), api_format=route.get("api_format"))
 
         base_url = provider.get("base_url", "").rstrip("/")
@@ -1670,6 +1918,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             for header_key, header_value in e.headers.items():
                 if header_key.lower() in ("content-type", "content-length"):
                     self.send_header(header_key, header_value)
+            self._send_image_diagnostic_header()
             self.end_headers()
             self.wfile.write(error_body.encode("utf-8"))
             return
@@ -1802,6 +2051,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             for header_key, header_value in e.headers.items():
                 if header_key.lower() in ("content-type", "content-length"):
                     self.send_header(header_key, header_value)
+            self._send_image_diagnostic_header()
             self.end_headers()
             self.wfile.write(error_body.encode("utf-8"))
             return
@@ -1846,6 +2096,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
         _debug_log("responses.route", model_id=model_id, route_type=route.get("route_type"), provider_id=route["provider"].get("id"), upstream_model=route.get("upstream_model"), api_format=route.get("api_format"))
         provider = route["provider"]
+        request_json, self._image_proxy_diagnostic = _apply_image_handling(
+            request_json,
+            route.get("model") if isinstance(route.get("model"), dict) else {},
+        )
 
         base_url = provider.get("base_url", "").rstrip("/")
         if not base_url:
@@ -1922,6 +2176,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             for header_key, header_value in e.headers.items():
                 if header_key.lower() in ("content-type", "content-length"):
                     self.send_header(header_key, header_value)
+            self._send_image_diagnostic_header()
             self.end_headers()
             self.wfile.write(error_body.encode("utf-8"))
             return
@@ -1997,6 +2252,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             for header_key, header_value in e.headers.items():
                 if header_key.lower() in ("content-type", "content-length"):
                     self.send_header(header_key, header_value)
+            self._send_image_diagnostic_header()
             self.end_headers()
             self.wfile.write(error_body.encode("utf-8"))
             return
@@ -2021,6 +2277,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _record_request_log(log_context, 200, response_json=response_json)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self._send_image_diagnostic_header()
             self.end_headers()
             self.wfile.write(json.dumps(response_json, ensure_ascii=False).encode("utf-8"))
 
@@ -2077,6 +2334,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             for header_key, header_value in e.headers.items():
                 if header_key.lower() in ("content-type", "content-length"):
                     self.send_header(header_key, header_value)
+            self._send_image_diagnostic_header()
             self.end_headers()
             self.wfile.write(error_body.encode("utf-8"))
             return
@@ -2113,6 +2371,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         ct = upstream_resp.headers.get("Content-Type", "application/json")
         self.send_header("Content-Type", ct)
+        self._send_image_diagnostic_header()
         self.end_headers()
         self.wfile.write(resp_body)
 
@@ -2139,6 +2398,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
+        self._send_image_diagnostic_header()
         self.end_headers()
 
         log_state = _SseStreamLogState(log_mode)
@@ -2209,6 +2469,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         _record_request_log(log_context, 200, response_json=response_json)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self._send_image_diagnostic_header()
         self.end_headers()
         self.wfile.write(json.dumps(response_json, ensure_ascii=False).encode("utf-8"))
 
@@ -2223,6 +2484,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
+        self._send_image_diagnostic_header()
         self.end_headers()
 
         converter = AnthropicSseToResponsesConverter(original_request)
@@ -2320,6 +2582,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         _record_request_log(log_context, 200, response_json=response_json)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self._send_image_diagnostic_header()
         self.end_headers()
         self.wfile.write(json.dumps(response_json, ensure_ascii=False).encode("utf-8"))
 
@@ -2350,6 +2613,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
+        self._send_image_diagnostic_header()
         self.end_headers()
 
         converter = ChatSseToResponsesConverter(original_request)

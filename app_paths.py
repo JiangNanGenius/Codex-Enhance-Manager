@@ -8,6 +8,7 @@ boundaries explicit.
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 from pathlib import Path
 from typing import Iterable
@@ -40,6 +41,8 @@ def user_documents_dir() -> Path:
 
 
 def app_data_dir() -> Path:
+    if platform.system() == "Darwin":
+        return Path.home() / "Library" / "Application Support" / APP_DIR_NAME
     return user_documents_dir() / APP_DIR_NAME
 
 
@@ -48,8 +51,15 @@ def legacy_app_data_dirs() -> list[Path]:
     current = app_data_dir()
     result: list[Path] = []
     seen: set[Path] = set()
-    for name in LEGACY_APP_DIR_NAMES:
-        candidate = documents / name
+    candidates = [documents / name for name in LEGACY_APP_DIR_NAMES]
+    candidates.extend(
+        [
+            Path.home() / ".codex_enhance_manager",
+            Path.home() / ".codex-enhance-manager",
+            Path.home() / "Library" / "Application Support" / "Codex Enhance Manager",
+        ]
+    )
+    for candidate in candidates:
         try:
             resolved = candidate.resolve()
         except OSError:
@@ -93,6 +103,11 @@ def ensure_app_dirs(extra_dirs: Iterable[Path] = ()) -> None:
         app_data_path("logs"),
         app_data_path("temp"),
         app_data_path("providers"),
+        app_data_path("extensions", "scripts"),
+        app_data_path("extensions", "themes"),
+        app_data_path("extensions", "pets"),
+        app_data_path("extensions", "backups"),
+        app_data_path("workflows"),
     ]
     dirs.extend(extra_dirs)
     for directory in dirs:

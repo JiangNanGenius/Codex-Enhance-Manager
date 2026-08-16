@@ -1,6 +1,14 @@
 # Codex Enhanced Manager TODO
 
-更新日期：2026-06-08
+更新日期：2026-08-16
+
+## v2.3.0 发布状态
+
+- [x] 保留 Windows 并新增 Apple Silicon macOS 12+、LaunchAgent、py2app APP 与 ad-hoc 签名 DMG 工作流。
+- [x] 增加模型级路由/上下文/压缩阈值、图片策略/VLM、音频转写、本地脚本/主题/桌宠、可撤销批量会话与本地工作流。
+- [x] Release 工作流移除 pytest 与打包烟测，只构建并记录大小和 SHA-256。
+- [x] 按发布约定不执行测试、lint、语法检查、烟测、手工启动、本地构建或安装包验证；仅做静态逻辑和最终差异审查。
+- [ ] GitHub Actions 产物不在本任务中等待或验证；失败时 v2.3.0 Release 可能暂时只有源码。
 
 ## 本轮发布目标
 

@@ -179,6 +179,11 @@ def _resource_path(name: str) -> str:
     bundle_dir = getattr(sys, "_MEIPASS", "")
     if bundle_dir:
         candidates.append(os.path.join(bundle_dir, name))
+    resource_dir = os.environ.get("RESOURCEPATH", "")
+    if resource_dir:
+        candidates.append(os.path.join(resource_dir, name))
+    if sys.platform == "darwin" and getattr(sys, "frozen", False):
+        candidates.append(str(Path(sys.executable).resolve().parents[1] / "Resources" / name))
     candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), name))
     if getattr(sys, "frozen", False):
         candidates.append(os.path.join(os.path.dirname(sys.executable), name))
@@ -1761,13 +1766,18 @@ def _setup_tray(window):
             pystray.MenuItem(TRAY_MENU_TEXT["exit"], exit_from_menu),
         )
 
-    tray_icon = pystray.Icon(
-        "CodexEnhancedManager",
-        image,
-        APP_TITLE,
-        menu=build_menu(),
-    )
-    tray_icon.run_detached()
+    try:
+        tray_icon = pystray.Icon(
+            "CodexEnhancedManager",
+            image,
+            APP_TITLE,
+            menu=build_menu(),
+        )
+        # On macOS the Cocoa WebView owns the main loop; pystray must attach to it.
+        tray_icon.run_detached()
+    except Exception as exc:
+        print(f"System tray is unavailable; continuing without it: {exc}")
+        tray_icon = None
 
     def on_closing():
         if allow_exit:
@@ -2011,7 +2021,7 @@ def main():
         ensure_app_dirs()
         webview.start(
             _on_webview_started,
-            gui="edgechromium",
+            gui="edgechromium" if sys.platform == "win32" else "cocoa" if sys.platform == "darwin" else None,
             storage_path=str(app_data_path("webview_data")),
         )
     finally:

@@ -1,8 +1,9 @@
-"""GitHub Releases update checks and safe EXE downloads."""
+"""GitHub Releases update checks and safe platform package downloads."""
 from __future__ import annotations
 
 import json
 import os
+import platform
 import re
 import shutil
 import tempfile
@@ -19,6 +20,7 @@ from app_version import APP_RELEASES_API_URL, APP_REPOSITORY_URL, APP_VERSION
 WINDOWS_EXE_ASSET = "CodexEnhancedManager.exe"
 LEGACY_WINDOWS_EXE_ASSETS = ("Codex" + "HistoryManager.exe",)
 WINDOWS_EXE_ASSET_NAMES = (WINDOWS_EXE_ASSET, *LEGACY_WINDOWS_EXE_ASSETS)
+MACOS_ARM64_ASSET_PATTERN = re.compile(r"^CodexEnhancedManager-v[0-9A-Za-z._-]+-macos-arm64\.dmg$", re.IGNORECASE)
 MAX_UPDATE_DOWNLOAD_BYTES = 300 * 1024 * 1024
 DEFAULT_TIMEOUT_SECONDS = 20
 USER_AGENT = "Codex-Enhance-Manager-Updater/1.0"
@@ -73,7 +75,8 @@ class UpdateManager:
             }
 
         latest_version = normalize_version_tag(str(release.get("tag_name") or release.get("name") or ""))
-        asset = self._find_windows_asset(release)
+        asset = self._find_platform_asset(release)
+        supported = self._platform_supported()
         update_available = compare_versions(latest_version, self.current_version) > 0
         return {
             "success": True,
@@ -81,6 +84,7 @@ class UpdateManager:
             "latest_version": latest_version,
             "update_available": update_available,
             "repository_url": self.repository_url,
+            "platform_supported": supported,
             "release": {
                 "name": release.get("name") or latest_version,
                 "tag_name": latest_version,
@@ -93,14 +97,14 @@ class UpdateManager:
         }
 
     def download_latest(self, include_prerelease: bool = False) -> Dict[str, Any]:
-        """Download the latest Windows EXE asset without replacing the running app."""
+        """Download the latest platform package without replacing the running app."""
         check = self.check_latest(include_prerelease=include_prerelease)
         release = check.get("release") or {}
         asset_data = release.get("asset") or {}
         if not asset_data.get("url"):
             return {
                 "success": False,
-                "error": "No Windows EXE asset found in the latest release.",
+                "error": "No compatible Windows EXE or Apple Silicon macOS DMG was found in the latest release.",
                 "check": check,
             }
 
@@ -108,7 +112,7 @@ class UpdateManager:
         tag = safe_path_part(release.get("tag_name") or check.get("latest_version") or "latest")
         target_dir = self.download_dir / tag
         target_dir.mkdir(parents=True, exist_ok=True)
-        target_name = safe_path_part(str(asset_data.get("name") or WINDOWS_EXE_ASSET))
+        target_name = safe_path_part(str(asset_data.get("name") or self._default_asset_name()))
         target_path = target_dir / target_name
         downloaded = self._download_file(asset_data["url"], target_path, expected_size=int(asset_data.get("size") or 0))
         return {
@@ -116,7 +120,11 @@ class UpdateManager:
             "downloaded_path": str(downloaded),
             "restart_required": True,
             "manual_install_required": True,
-            "message": "Download finished. Close the app and run the downloaded EXE to update.",
+            "message": (
+                "Download finished. Close the app, open the DMG, and replace the app in Applications."
+                if platform.system() == "Darwin"
+                else "Download finished. Close the app and run the downloaded EXE to update."
+            ),
             "check": check,
         }
 
@@ -164,6 +172,36 @@ class UpdateManager:
                 digest=str(asset.get("digest") or ""),
             )
         return None
+
+    @staticmethod
+    def _find_macos_arm64_asset(release: Dict[str, Any]) -> Optional[ReleaseAsset]:
+        assets = release.get("assets") if isinstance(release.get("assets"), list) else []
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+            name = str(asset.get("name") or "")
+            url = str(asset.get("browser_download_url") or "")
+            if MACOS_ARM64_ASSET_PATTERN.fullmatch(name) and url:
+                return ReleaseAsset(name=name, url=url, size=int(asset.get("size") or 0), digest=str(asset.get("digest") or ""))
+        return None
+
+    @classmethod
+    def _find_platform_asset(cls, release: Dict[str, Any]) -> Optional[ReleaseAsset]:
+        if platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}:
+            return cls._find_macos_arm64_asset(release)
+        if platform.system() == "Windows":
+            return cls._find_windows_asset(release)
+        return None
+
+    @staticmethod
+    def _platform_supported() -> bool:
+        return platform.system() == "Windows" or (
+            platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}
+        )
+
+    @staticmethod
+    def _default_asset_name() -> str:
+        return "CodexEnhancedManager-macos-arm64.dmg" if platform.system() == "Darwin" else WINDOWS_EXE_ASSET
 
     def _download_file(self, url: str, target_path: Path, expected_size: int = 0) -> Path:
         if expected_size and expected_size > MAX_UPDATE_DOWNLOAD_BYTES:

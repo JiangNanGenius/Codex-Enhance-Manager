@@ -1,5 +1,27 @@
 # Release Notes
 
+## v2.3.0 - 2026-08-16
+
+### 中文
+
+- 新增 Apple Silicon macOS 12+ 桌面支持、Application Support 数据目录、Codex/ChatGPT `.app` 发现与 CDP 启动、LaunchAgent 登录启动，以及 py2app + ad-hoc 签名 DMG 发布链。
+- 扩展供应商模型配置：上游模型 ID、路由别名、独立上下文、自动压缩阈值、服务档位、Web Search、Responses Lite 和三种图片代理策略；旧配置加载时迁移到 schema v2。
+- 新增 VLM 图片分析降级、OpenAI 兼容音频转写代理、供应商级请求策略隔离和系统可信证书链。
+- 新增本地用户脚本、主题和桌宠导入 API/UI；脚本记录 SHA-256 并默认停用，主题包拒绝 JavaScript、路径穿越和超限文件。
+- 新增多数据库发现、分页批选、删除前备份、批量删除与撤销恢复，以及 Upstream worktree 和 Zed Remote 项目记录。
+- 更新 Codex CDP 注入目标过滤与重注入逻辑，隔离 Quick Chat，并增加粘贴修复、强制中文、插件展开、线程 ID、滚动恢复、会话宽度、服务档位和 Stepwise 控件。
+- Windows 与 macOS Release 工作流均不执行测试或启动产物，只构建并计算大小/SHA-256。macOS DMG 未公证；CI 失败时 Release 可能暂时只有源码。
+
+### English
+
+- Added Apple Silicon macOS 12+ support, Application Support storage, Codex/ChatGPT app discovery and CDP launch, LaunchAgent login startup, and a py2app/ad-hoc-signed DMG pipeline.
+- Expanded per-model routing with upstream IDs, route aliases, context/compact limits, service tiers, Web Search, Responses Lite, and three image handling modes; legacy provider data migrates to schema v2 on load.
+- Added VLM image-analysis fallback, OpenAI-compatible audio transcription forwarding, provider-isolated request policy, and system trust-store TLS behavior.
+- Added local-only scripts, themes, and pet packs with SHA-256 records, disabled-by-default scripts, and strict archive/path/type/size validation.
+- Added multi-database discovery, paged batch selection, backed-up deletion with undo, explicit upstream worktrees, and Zed Remote project records.
+- Refined CDP target isolation/reinjection and added paste repair, Chinese UI enforcement, plugin expansion, thread IDs, scroll restoration, conversation width, service tier, and Stepwise controls.
+- Release workflows intentionally run no tests and do not launch artifacts; they only package and record size/SHA-256. The macOS DMG is not notarized, and a failed CI job may leave the Release source-only.
+
 ## v2.2.28 - 2026-06-17
 
 - Switched the packaged and desktop EXE filename to `CodexEnhancedManager.exe`; desktop copy cleanup now removes the old filename when possible.

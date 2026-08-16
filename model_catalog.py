@@ -254,8 +254,8 @@ class UnifiedModelCatalog:
     ) -> Dict[str, Any]:
         alias = provider.get("short_alias") or provider.get("id")
         visible_provider_alias = _unique_provider_visible_alias(provider, provider_aliases)
-        upstream_model_id = model.get("id") or "default"
-        visible_model_id = _model_visible_id(model, upstream_model_id)
+        upstream_model_id = model.get("upstream_model_id") or model.get("id") or "default"
+        visible_model_id = _model_visible_id(model, model.get("id") or upstream_model_id)
         codex_display_name = _model_codex_display_name(model, upstream_model_id)
         pricing: Dict[str, Any] = {}
         if isinstance(provider.get("pricing"), dict):
@@ -276,6 +276,11 @@ class UnifiedModelCatalog:
             "api_format": provider.get("api_format"),
             "responses_profile": provider.get("responses_profile", {}),
             "context_window": model.get("context_window", 0),
+            "auto_compact_token_limit": model.get("auto_compact_token_limit", 0),
+            "supports_search_tool": bool(model.get("supports_search_tool", False)),
+            "use_responses_lite": bool(model.get("use_responses_lite", False)),
+            "service_tiers": model.get("service_tiers", []),
+            "default_service_tier": model.get("default_service_tier", ""),
             "max_output_tokens": model.get("max_output_tokens", 0),
             "capabilities": merge_provider_model_capabilities(provider, model),
             "reasoning_effort_profile": model.get("reasoning_effort_profile", {}),
@@ -459,6 +464,11 @@ def _codex_model_info_from_entry(entry: Dict[str, Any], priority: int = 0) -> Di
         priority=priority,
         reasoning_efforts=efforts,
         default_reasoning_effort=default_effort,
+        auto_compact_token_limit=_positive_int(entry.get("auto_compact_token_limit"), 0),
+        supports_search_tool=bool(entry.get("supports_search_tool")),
+        use_responses_lite=bool(entry.get("use_responses_lite")),
+        service_tiers=entry.get("service_tiers") if isinstance(entry.get("service_tiers"), list) else [],
+        default_service_tier=str(entry.get("default_service_tier") or ""),
     )
 
 
@@ -527,6 +537,11 @@ def _codex_model_info(
     priority: int,
     reasoning_efforts: Optional[List[str]] = None,
     default_reasoning_effort: str = "",
+    auto_compact_token_limit: int = 0,
+    supports_search_tool: bool = False,
+    use_responses_lite: bool = False,
+    service_tiers: Optional[List[str]] = None,
+    default_service_tier: str = "",
 ) -> Dict[str, Any]:
     efforts = [effort for effort in (reasoning_efforts or []) if effort]
     model = {
@@ -545,8 +560,8 @@ def _codex_model_info(
         "supported_in_api": True,
         "priority": int(priority),
         "additional_speed_tiers": [],
-        "service_tiers": [],
-        "default_service_tier": None,
+        "service_tiers": list(service_tiers or []),
+        "default_service_tier": default_service_tier or None,
         "availability_nux": None,
         "upgrade": None,
         "base_instructions": CODEX_BASE_INSTRUCTIONS,
@@ -561,12 +576,12 @@ def _codex_model_info(
         "supports_image_detail_original": bool("image" in input_modalities),
         "context_window": int(context_window),
         "max_context_window": int(context_window),
-        "auto_compact_token_limit": None,
+        "auto_compact_token_limit": int(auto_compact_token_limit) if auto_compact_token_limit > 0 else None,
         "effective_context_window_percent": 95,
         "experimental_supported_tools": [],
         "input_modalities": input_modalities or ["text"],
-        "supports_search_tool": False,
-        "use_responses_lite": False,
+        "supports_search_tool": bool(supports_search_tool),
+        "use_responses_lite": bool(use_responses_lite),
         "auto_review_model_override": None,
         "tool_mode": None,
         "multi_agent_version": None,

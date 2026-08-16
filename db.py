@@ -261,6 +261,24 @@ class CodexDB:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def sync_missing_provider_metadata(self, model_to_provider: Dict[str, str]) -> Dict[str, int]:
+        """Fill only blank provider metadata from an unambiguous local model map."""
+        self._ensure_connected()
+        columns = self.get_columns()
+        if "model" not in columns or "model_provider" not in columns:
+            return {"updated": 0, "models": 0}
+        updated = 0
+        for model_id, provider_id in model_to_provider.items():
+            if not model_id or not provider_id:
+                continue
+            cursor = self._conn.execute(
+                "UPDATE threads SET model_provider=? WHERE lower(model)=lower(?) AND (model_provider IS NULL OR model_provider='')",
+                (provider_id, model_id),
+            )
+            updated += max(int(cursor.rowcount or 0), 0)
+        self._conn.commit()
+        return {"updated": updated, "models": len(model_to_provider)}
+
     def set_archived(self, thread_id: str, archived: int) -> bool:
         """
         设置归档状态 (0=未归档, 1=已归档)。
@@ -309,6 +327,32 @@ class CodexDB:
             return True
         except Exception as e:
             print(f"删除会话失败: {e}")
+            return False
+
+    def restore_thread(self, thread: Dict) -> bool:
+        """Restore a previously backed-up thread row using only current columns."""
+        if not isinstance(thread, dict) or not thread.get("id"):
+            return False
+        self._ensure_connected()
+        try:
+            available = set(self.get_columns())
+            payload = {key: value for key, value in thread.items() if key in available}
+            if "id" not in payload:
+                return False
+            columns = list(payload)
+            placeholders = ", ".join("?" for _ in columns)
+            quoted = ", ".join(f'"{column}"' for column in columns)
+            updates = ", ".join(
+                f'"{column}"=excluded."{column}"' for column in columns if column != "id"
+            )
+            sql = f"INSERT INTO threads ({quoted}) VALUES ({placeholders})"
+            if updates:
+                sql += f' ON CONFLICT("id") DO UPDATE SET {updates}'
+            self._conn.execute(sql, [payload[column] for column in columns])
+            self._conn.commit()
+            return True
+        except Exception as e:
+            print(f"恢复会话失败: {e}")
             return False
 
     def get_threads_since(self, since_ts: str) -> List[Dict]:

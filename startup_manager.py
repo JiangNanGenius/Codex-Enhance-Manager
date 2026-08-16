@@ -1,14 +1,16 @@
 """
-startup_manager.py - Windows startup and elevation integration.
+startup_manager.py - Windows and macOS login-startup integration.
 
 The module keeps OS mutation behind explicit confirmation. Status and preview
-operations are read-only. Tests inject a fake command runner and temp startup
-folder so no real Windows startup entry or scheduled task is created.
+operations are read-only; apply uses Task Scheduler/startup-folder on Windows
+or a per-user LaunchAgent on macOS.
 """
 from __future__ import annotations
 
 import os
 import platform
+import plistlib
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -17,9 +19,11 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
-STARTUP_CONFIRMATION = "MODIFY_WINDOWS_STARTUP"
-STARTUP_MODES = {"disabled", "startup_folder", "scheduled_task_highest"}
+STARTUP_CONFIRMATION = "MODIFY_DESKTOP_STARTUP"
+LEGACY_STARTUP_CONFIRMATION = "MODIFY_WINDOWS_STARTUP"
+STARTUP_MODES = {"disabled", "startup_folder", "scheduled_task_highest", "launch_agent"}
 PACKAGED_RELEASE_EXE_NAME = "CodexEnhancedManager.exe"
+MACOS_LAUNCH_AGENT_ID = "com.jiangnangenius.codex-enhanced-manager"
 STARTUP_CONFIG_KEYS = (
     "startup_enabled",
     "startup_mode",
@@ -65,7 +69,7 @@ class StartupManager:
     def __init__(
         self,
         *,
-    app_name: str = "Codex Enhanced Manager",
+        app_name: str = "Codex Enhanced Manager",
         startup_dir: Optional[Path] = None,
         runner: Optional[Callable[[List[str]], Any]] = None,
         platform_name: Optional[str] = None,
@@ -81,6 +85,10 @@ class StartupManager:
     def is_windows(self) -> bool:
         return self._platform_name.lower().startswith("win")
 
+    @property
+    def is_macos(self) -> bool:
+        return self._platform_name.lower() in {"darwin", "macos", "mac"}
+
     def normalize_settings(self, settings: Dict[str, Any]) -> Dict[str, Any]:
         raw = settings or {}
         enabled = bool(raw.get("startup_enabled", False))
@@ -89,7 +97,9 @@ class StartupManager:
 
         if mode not in STARTUP_MODES:
             mode = "disabled"
-        if auto_elevate and enabled:
+        if self.is_macos and enabled:
+            mode = "launch_agent"
+        elif auto_elevate and enabled:
             mode = "scheduled_task_highest"
         elif not enabled:
             mode = "disabled"
@@ -130,7 +140,7 @@ class StartupManager:
             normalized["startup_arguments"],
         )
         return {
-            "supported": self.is_windows,
+            "supported": self.is_windows or self.is_macos,
             "platform": self._platform_name,
             "configured": normalized,
             "target_diagnostics": target_diagnostics,
@@ -157,28 +167,39 @@ class StartupManager:
 
         if mode == "disabled":
             actions.append({"kind": "startup_entry", "action": "remove", "path": str(startup_path)})
-            actions.append({"kind": "scheduled_task", "action": "delete", "task_name": task_name})
+            if self.is_windows:
+                actions.append({"kind": "scheduled_task", "action": "delete", "task_name": task_name})
         elif mode == "startup_folder":
             actions.append({"kind": "startup_entry", "action": "write_cmd", "path": str(startup_path), "command_line": command_line})
             actions.append({"kind": "scheduled_task", "action": "delete", "task_name": task_name})
         elif mode == "scheduled_task_highest":
             actions.append({"kind": "startup_entry", "action": "remove", "path": str(startup_path)})
             actions.append({"kind": "scheduled_task", "action": "create", "task_name": task_name, "argv": self.create_task_argv(task_name, command_line)})
+        elif mode == "launch_agent":
+            actions.append({
+                "kind": "launch_agent",
+                "action": "write_plist",
+                "path": str(startup_path),
+                "target": target,
+                "arguments": arguments,
+            })
 
         notes = [
-            "Read-only status and preview do not mutate Windows startup state.",
-            "Apply/remove requires typed confirmation and should be manually tested outside this Codex session.",
+            "Read-only status and preview do not mutate desktop startup state.",
+            "Apply/remove requires typed confirmation.",
         ]
         if mode == "scheduled_task_highest":
             notes.append("Administrator startup uses Windows Task Scheduler with run level HIGHEST.")
             notes.append("Windows may require an administrator confirmation when creating or changing this task.")
         elif mode == "startup_folder":
             notes.append("Startup-folder mode runs for the current user at logon and cannot request administrator privileges.")
+        elif mode == "launch_agent":
+            notes.append("macOS login startup uses a per-user LaunchAgent and never requests elevation.")
         if mode != "disabled":
             notes.extend(target_diagnostics.get("warnings", []))
 
         return {
-            "supported": self.is_windows,
+            "supported": self.is_windows or self.is_macos,
             "mode": mode,
             "enabled": mode != "disabled",
             "auto_elevate": normalized["startup_auto_elevate"],
@@ -194,21 +215,25 @@ class StartupManager:
             "required_confirmation": STARTUP_CONFIRMATION,
             "requires_manual_confirmation": True,
             "actions": actions,
-            "rollback": [
-                {"kind": "startup_entry", "action": "remove", "path": str(startup_path)},
-                {"kind": "scheduled_task", "action": "delete", "task_name": task_name},
-            ],
+            "rollback": (
+                [{"kind": "startup_entry", "action": "remove", "path": str(startup_path)}]
+                if self.is_macos
+                else [
+                    {"kind": "startup_entry", "action": "remove", "path": str(startup_path)},
+                    {"kind": "scheduled_task", "action": "delete", "task_name": task_name},
+                ]
+            ),
             "notes": notes,
         }
 
     def apply(self, settings: Dict[str, Any], confirmation: str = "") -> Dict[str, Any]:
-        if confirmation != STARTUP_CONFIRMATION:
+        if confirmation not in {STARTUP_CONFIRMATION, LEGACY_STARTUP_CONFIRMATION}:
             return self._confirmation_error()
         preview = self.preview(settings)
-        if not self.is_windows:
+        if not (self.is_windows or self.is_macos):
             return {
                 "success": False,
-                "error": "Windows startup integration is only supported on Windows.",
+                "error": "Startup integration is only supported on Windows and macOS.",
                 "preview": preview,
             }
 
@@ -220,14 +245,14 @@ class StartupManager:
         }
 
     def remove(self, settings: Dict[str, Any], confirmation: str = "") -> Dict[str, Any]:
-        if confirmation != STARTUP_CONFIRMATION:
+        if confirmation not in {STARTUP_CONFIRMATION, LEGACY_STARTUP_CONFIRMATION}:
             return self._confirmation_error()
         normalized = self.normalize_settings({**settings, "startup_enabled": False, "startup_mode": "disabled"})
         preview = self.preview(normalized)
-        if not self.is_windows:
+        if not (self.is_windows or self.is_macos):
             return {
                 "success": False,
-                "error": "Windows startup integration is only supported on Windows.",
+                "error": "Startup integration is only supported on Windows and macOS.",
                 "preview": preview,
             }
         results = self._execute_actions(preview["actions"])
@@ -240,12 +265,16 @@ class StartupManager:
     def startup_dir(self) -> Path:
         if self._startup_dir is not None:
             return Path(self._startup_dir)
+        if self.is_macos:
+            return Path.home() / "Library" / "LaunchAgents"
         appdata = os.environ.get("APPDATA")
         if appdata:
             return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
         return Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
 
     def startup_entry_path(self, settings: Dict[str, Any]) -> Path:
+        if self.is_macos:
+            return self.startup_dir() / f"{MACOS_LAUNCH_AGENT_ID}.plist"
         name = settings.get("startup_shortcut_name") or "CodexEnhancedManager.cmd"
         return self.startup_dir() / self._safe_cmd_name(name)
 
@@ -261,6 +290,7 @@ class StartupManager:
         suffix = path.suffix.lower() if path is not None else ""
         exists = bool(path and path.exists())
         is_exe = suffix == ".exe"
+        is_app_binary = self.is_macos and (".app/contents/macos/" in target_text.lower() or bool(path and os.access(path, os.X_OK)))
         name_matches_release = name.lower() == PACKAGED_RELEASE_EXE_NAME.lower()
         lower_name = name.lower()
         is_python_runtime = lower_name in {"python.exe", "pythonw.exe"} or lower_name.startswith("python")
@@ -270,12 +300,14 @@ class StartupManager:
             warnings.append("Startup target is empty; apply will use the detected runtime target.")
         elif not exists:
             warnings.append("Startup target does not exist yet; verify the packaged EXE path before applying.")
-        if target_text and not is_exe:
+        if self.is_windows and target_text and not is_exe:
             warnings.append("Startup target is not a Windows EXE; packaged release startup verification will not be covered.")
         elif is_python_runtime:
             warnings.append("Startup target is a Python runtime; use the packaged EXE for release/manual startup verification.")
-        elif is_exe and not name_matches_release:
+        elif self.is_windows and is_exe and not name_matches_release:
             warnings.append(f"Startup target EXE name differs from the standard release asset {PACKAGED_RELEASE_EXE_NAME}.")
+        if self.is_macos and target_text and not is_app_binary:
+            warnings.append("Startup target is not an executable macOS app binary.")
 
         return {
             "target": str(path) if path is not None else "",
@@ -286,7 +318,8 @@ class StartupManager:
             "expected_release_exe_name": PACKAGED_RELEASE_EXE_NAME,
             "target_matches_release_exe_name": name_matches_release,
             "target_is_python_runtime": is_python_runtime,
-            "release_startup_ready": exists and is_exe and not is_python_runtime,
+            "target_is_macos_app_binary": is_app_binary,
+            "release_startup_ready": exists and ((self.is_windows and is_exe and not is_python_runtime) or is_app_binary),
             "warnings": warnings,
             "warning_count": len(warnings),
         }
@@ -325,9 +358,34 @@ class StartupManager:
                 results.append(self._create_task(str(action["task_name"]), list(action["argv"])))
             elif kind == "scheduled_task" and operation == "delete":
                 results.append(self._delete_task(str(action["task_name"])))
+            elif kind == "launch_agent" and operation == "write_plist":
+                results.append(self._write_launch_agent(
+                    Path(action["path"]),
+                    str(action.get("target") or ""),
+                    str(action.get("arguments") or ""),
+                ))
             else:
                 results.append({"success": False, "kind": kind, "action": operation, "error": "Unknown startup action"})
         return results
+
+    def _write_launch_agent(self, path: Path, target: str, arguments: str) -> Dict[str, Any]:
+        try:
+            program_arguments = [target, *shlex.split(arguments or "")]
+            payload = {
+                "Label": MACOS_LAUNCH_AGENT_ID,
+                "ProgramArguments": program_arguments,
+                "RunAtLoad": True,
+                "KeepAlive": False,
+                "ProcessType": "Interactive",
+            }
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".plist.tmp")
+            with temporary.open("wb") as handle:
+                plistlib.dump(payload, handle, sort_keys=True)
+            temporary.replace(path)
+            return {"success": True, "kind": "launch_agent", "action": "write_plist", "path": str(path)}
+        except (OSError, ValueError) as exc:
+            return {"success": False, "kind": "launch_agent", "action": "write_plist", "path": str(path), "error": str(exc)}
 
     def _write_startup_cmd(self, path: Path, command_line: str) -> Dict[str, Any]:
         try:

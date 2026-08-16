@@ -19,6 +19,8 @@ import json
 import re
 import sqlite3
 import shutil
+import signal
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -300,6 +302,8 @@ def is_codex_running(timeout: int = 3) -> Tuple[bool, List[int]]:
     Returns:
         (是否运行中, [PID列表])
     """
+    if os.name != "nt":
+        return _find_macos_codex_pids(timeout=timeout) if sys_platform_is_macos() else (False, [])
     pids = []
     safe_timeout = max(int(timeout or 3), 1)
     for image_name in CODEX_PROCESS_NAMES:
@@ -309,6 +313,40 @@ def is_codex_running(timeout: int = 3) -> Tuple[bool, List[int]]:
     # Deduplicate：dict.fromkeys 保持顺序去重，Python 3.7+ 有序性保证
     unique_pids = list(dict.fromkeys(pids))
     return len(unique_pids) > 0, unique_pids
+
+
+def sys_platform_is_macos() -> bool:
+    import sys
+    return sys.platform == "darwin"
+
+
+def _find_macos_codex_pids(timeout: int = 3) -> Tuple[bool, List[int]]:
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=max(1, int(timeout or 3)),
+            check=False,
+        )
+    except Exception:
+        return False, []
+    pids: List[int] = []
+    for line in (result.stdout or "").splitlines():
+        stripped = line.strip()
+        pid_text, _, command = stripped.partition(" ")
+        lower = command.lower()
+        is_desktop = any(
+            marker in lower
+            for marker in (
+                "/codex.app/contents/macos/",
+                "/chatgpt.app/contents/macos/",
+            )
+        )
+        if pid_text.isdigit() and is_desktop:
+            pids.append(int(pid_text))
+    unique = list(dict.fromkeys(pids))
+    return bool(unique), unique
 
 
 def kill_codex(timeout: int = 4) -> Tuple[bool, str]:
@@ -321,6 +359,25 @@ def kill_codex(timeout: int = 4) -> Tuple[bool, str]:
     if not running:
         return True, "Codex 未在运行"
 
+    if sys_platform_is_macos():
+        try:
+            for pid in pids:
+                os.kill(pid, signal.SIGTERM)
+            deadline = time.monotonic() + safe_timeout
+            while time.monotonic() < deadline:
+                still_running, still_pids = is_codex_running(timeout=1)
+                if not still_running:
+                    return True, f"已关闭 Codex (PID: {pids})"
+                time.sleep(0.2)
+            for pid in still_pids:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            still_running, still_pids = is_codex_running(timeout=1)
+            return (not still_running, f"已关闭 Codex (PID: {pids})" if not still_running else f"仍检测到 Codex 进程: {still_pids}")
+        except Exception as e:
+            return False, f"关闭 Codex 失败: {e}"
     try:
         import subprocess
         args = ["taskkill"]
@@ -502,6 +559,16 @@ def find_codex_desktop_launchers(override: str = "") -> List[str]:
     candidates: List[str] = []
     if override:
         candidates.append(override)
+    if sys_platform_is_macos():
+        home_apps = Path.home() / "Applications"
+        for root in (Path("/Applications"), home_apps):
+            candidates.extend(
+                str(root / name)
+                for name in ("Codex.app", "Codex Beta.app", "ChatGPT.app")
+            )
+        bundles = _dedupe_existing_paths(candidates)
+        bundles.sort(key=_path_mtime, reverse=True)
+        return [path for path in bundles if Path(path).suffix.lower() == ".app"]
     if os.name == "nt":
         local = os.environ.get("LOCALAPPDATA", "")
         program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
@@ -552,6 +619,10 @@ def _windowsapps_codex_gui_candidates() -> List[str]:
 
 def _looks_like_codex_gui_launcher(path: str) -> bool:
     candidate = Path(path)
+    if sys_platform_is_macos():
+        return candidate.suffix.lower() == ".app" and candidate.name.lower() in {
+            "codex.app", "codex beta.app", "chatgpt.app"
+        }
     if candidate.name.lower() != "codex.exe":
         return False
     return _is_codex_desktop_root(candidate.parent)
@@ -606,6 +677,11 @@ def _launch_codex_path(path: str, extra_args: Optional[List[str]] = None):
     extra_args = extra_args or []
     flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
     suffix = Path(path).suffix.lower()
+    if sys_platform_is_macos() and suffix == ".app":
+        return subprocess.Popen(
+            ["open", "-n", path, *( ["--args", *extra_args] if extra_args else [])],
+            close_fds=True,
+        )
     if os.name == "nt" and suffix in {".bat", ".cmd"}:
         return subprocess.Popen(
             ["cmd.exe", "/c", "start", "", path, *extra_args],

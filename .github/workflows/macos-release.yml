@@ -1,0 +1,57 @@
+name: macOS arm64 Release DMG
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-dmg:
+    runs-on: macos-14
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      PYTHONUTF8: "1"
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build ad-hoc signed APP and DMG
+        run: python build_macos.py
+
+      - name: Record release asset size and SHA-256
+        run: |
+          cat dist/macos-release-manifest.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: CodexEnhancedManager-macos-arm64
+          if-no-files-found: error
+          path: |
+            dist/CodexEnhancedManager-v2.3.0-macos-arm64.dmg
+            dist/macos-release-manifest.json
+
+      - name: Attach assets to GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/CodexEnhancedManager-v2.3.0-macos-arm64.dmg \
+            dist/macos-release-manifest.json \
+            --clobber

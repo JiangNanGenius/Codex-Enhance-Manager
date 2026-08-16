@@ -37,6 +37,12 @@ def _renderer_enhancement_runtime() -> str:
         forcePluginInstall: false,
         hideOfficialUsageAlert: false,
         zhCnEnhance: false,
+        pasteFix: true,
+        pluginAutoExpand: true,
+        threadId: true,
+        stepwise: false,
+        conversationWidth: 'default',
+        scrollRestore: true,
       },
       observer: null,
       scanTimer: 0,
@@ -48,6 +54,10 @@ def _renderer_enhancement_runtime() -> str:
       responseJsonPatched: false,
       fetchPatched: false,
       webSocketPatched: false,
+      pasteHandler: null,
+      scrollHandler: null,
+      scrollTarget: null,
+      layoutStyle: null,
     };
 
     function normalizeText(value) {
@@ -573,6 +583,104 @@ def _renderer_enhancement_runtime() -> str:
       button.dataset.cemPluginEntryUnlocked = 'true';
     }
 
+    function installPasteFix() {
+      if (!state.settings.pasteFix || state.pasteHandler) return;
+      state.pasteHandler = (event) => {
+        const target = event.target?.closest?.('textarea, input, [contenteditable="true"]');
+        if (!target || !event.clipboardData) return;
+        const text = event.clipboardData.getData('text/plain');
+        const html = event.clipboardData.getData('text/html');
+        if (!text || !html) return;
+        event.preventDefault();
+        if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+          const start = target.selectionStart ?? target.value.length;
+          const end = target.selectionEnd ?? start;
+          target.setRangeText(text, start, end, 'end');
+          target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: text }));
+          return;
+        }
+        document.execCommand('insertText', false, text);
+      };
+      document.addEventListener('paste', state.pasteHandler, true);
+    }
+
+    function expandPluginLists() {
+      if (!state.settings.pluginAutoExpand) return;
+      for (const button of document.querySelectorAll('button, [role="button"]')) {
+        if (button.dataset.cemAutoExpanded === 'true' || !visibleBox(button, 40, 10)) continue;
+        const text = elementText(button);
+        if (!/(view|show|load|查看|显示|加载).{0,30}(more|另外|更多|个)/i.test(text)) continue;
+        button.dataset.cemAutoExpanded = 'true';
+        button.click();
+      }
+    }
+
+    function updateThreadIdBadge() {
+      const existing = document.getElementById('cem-thread-id-badge');
+      if (!state.settings.threadId) { existing?.remove(); return; }
+      const match = location.pathname.match(/[0-9a-f]{8}-[0-9a-f-]{20,}/i)
+        || location.href.match(/(?:thread|session|chat)[/=:]([A-Za-z0-9_-]{8,})/i);
+      const id = match ? String(match[1] || match[0]) : '';
+      if (!id) { existing?.remove(); return; }
+      const badge = existing || document.createElement('button');
+      badge.id = 'cem-thread-id-badge';
+      badge.type = 'button';
+      badge.textContent = `Thread ${id.slice(0, 8)}`;
+      badge.title = id;
+      Object.assign(badge.style, { position:'fixed', left:'10px', bottom:'10px', zIndex:'2147482000', border:'1px solid #475569', borderRadius:'999px', padding:'4px 8px', background:'#0f172acc', color:'#cbd5e1', fontSize:'11px' });
+      badge.onclick = () => navigator.clipboard?.writeText(id).catch(() => {});
+      if (!existing) document.documentElement.appendChild(badge);
+    }
+
+    function applyConversationWidth() {
+      state.layoutStyle?.remove();
+      state.layoutStyle = null;
+      const width = state.settings.conversationWidth;
+      if (!width || width === 'default') return;
+      const maxWidth = width === 'full' ? 'none' : width === 'wide' ? '1100px' : /^\d{3,4}px$/.test(width) ? width : '900px';
+      const style = document.createElement('style');
+      style.dataset.cemConversationWidth = width;
+      style.textContent = `[data-message-author-role], [data-thread-find-target], main article, main form { max-width: ${maxWidth} !important; }`;
+      document.head.appendChild(style);
+      state.layoutStyle = style;
+    }
+
+    function installScrollRestore() {
+      if (!state.settings.scrollRestore || state.scrollHandler) return;
+      const target = document.querySelector('[data-radix-scroll-area-viewport], main');
+      if (!target) return;
+      const key = `cem-scroll:${location.pathname}`;
+      const saved = Number(sessionStorage.getItem(key) || 0);
+      if (saved > 0) target.scrollTop = saved;
+      state.scrollTarget = target;
+      state.scrollHandler = () => sessionStorage.setItem(key, String(target.scrollTop || 0));
+      target.addEventListener('scroll', state.scrollHandler, { passive: true });
+    }
+
+    function ensureStepwise() {
+      const existing = document.getElementById('cem-stepwise-local');
+      if (!state.settings.stepwise) { existing?.remove(); return; }
+      if (existing) return;
+      const composer = document.querySelector('textarea, [contenteditable="true"], [data-testid*="composer" i]');
+      if (!composer) return;
+      const button = document.createElement('button');
+      button.id = 'cem-stepwise-local';
+      button.type = 'button';
+      button.textContent = 'Next steps';
+      button.title = 'Insert a local next-step prompt';
+      Object.assign(button.style, { margin:'4px', padding:'4px 8px', borderRadius:'8px', border:'1px solid #64748b', background:'#0f172a', color:'#e2e8f0' });
+      button.onclick = () => {
+        const prompt = 'Review the current result, identify the highest-priority unfinished item, and propose the next three concrete steps.';
+        if (composer instanceof HTMLTextAreaElement) {
+          composer.value = prompt;
+          composer.dispatchEvent(new InputEvent('input', { bubbles:true, data:prompt, inputType:'insertText' }));
+        } else {
+          composer.focus(); document.execCommand('insertText', false, prompt);
+        }
+      };
+      composer.parentElement?.appendChild(button);
+    }
+
     function scanEnhancements() {
       state.scanTimer = 0;
       installPluginMarketplaceUnlock();
@@ -580,6 +688,11 @@ def _renderer_enhancement_runtime() -> str:
       cemApplyZhCnEnhancement();
       unlockPluginEntry();
       unblockPluginInstallButtons();
+      installPasteFix();
+      expandPluginLists();
+      updateThreadIdBadge();
+      installScrollRestore();
+      ensureStepwise();
     }
 
     function scheduleScan(delay = 80) {
@@ -609,7 +722,14 @@ def _renderer_enhancement_runtime() -> str:
       state.settings.forcePluginInstall = enabled && Boolean(data && (data.force_plugin_install || data.plugin_unlock_enabled));
       state.settings.hideOfficialUsageAlert = enabled && Boolean(data && data.hide_official_usage_alert);
       state.settings.zhCnEnhance = enabled && Boolean(data && data.codex_zh_cn_enhance_enabled !== false);
+      state.settings.pasteFix = enabled && Boolean(!data || data.codex_paste_fix_enabled !== false);
+      state.settings.pluginAutoExpand = enabled && Boolean(!data || data.codex_plugin_auto_expand_enabled !== false);
+      state.settings.threadId = enabled && Boolean(!data || data.codex_thread_id_enabled !== false);
+      state.settings.stepwise = enabled && Boolean(data && data.codex_stepwise_enabled);
+      state.settings.conversationWidth = data && data.enable_conversation_width !== false ? String(data.conversation_width || 'default') : 'default';
+      state.settings.scrollRestore = enabled && Boolean(!data || data.enable_scroll_restore !== false);
       if (!state.settings.zhCnEnhance) restoreZhCnEnhancement();
+      applyConversationWidth();
       scheduleScan(0);
     }
 
@@ -622,6 +742,11 @@ def _renderer_enhancement_runtime() -> str:
       state.observer = null;
       restoreUsageAlerts();
       restoreZhCnEnhancement();
+      if (state.pasteHandler) document.removeEventListener('paste', state.pasteHandler, true);
+      if (state.scrollHandler && state.scrollTarget) state.scrollTarget.removeEventListener('scroll', state.scrollHandler);
+      state.layoutStyle?.remove();
+      document.getElementById('cem-thread-id-badge')?.remove();
+      document.getElementById('cem-stepwise-local')?.remove();
       if (Array.prototype.__cemOriginalFilter) Array.prototype.filter = Array.prototype.__cemOriginalFilter;
       if (Response?.prototype?.__cemOriginalJson) Response.prototype.json = Response.prototype.__cemOriginalJson;
       if (window.__cemOriginalFetch) window.fetch = window.__cemOriginalFetch;
@@ -1727,6 +1852,84 @@ def discover_cdp_targets(port: int = DEFAULT_CDP_PORT, timeout: float = 1.0) -> 
     return []
 
 
+def _local_extension_script(backend_url: str) -> str:
+    """Build the opt-in local script/theme runtime without remote market access."""
+    try:
+        from local_extensions import LocalExtensionManager
+
+        manager = LocalExtensionManager()
+        scripts = manager.enabled_script_sources()
+    except Exception:
+        scripts = []
+    parts = [
+        "(() => {",
+        "const runtimeKey = '__cemLocalExtensions';",
+        "const previous = window[runtimeKey];",
+        "if (previous && typeof previous.destroy === 'function') previous.destroy();",
+        "const state = { observer: null, pet: null, theme: null, resizeHandler: null, destroy() {",
+        "  if (this.observer) this.observer.disconnect();",
+        "  if (this.pet) this.pet.remove();",
+        "  if (this.theme) this.theme.remove();",
+        "  if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);",
+        "} };",
+        "window[runtimeKey] = state;",
+        f"const backend = {json.dumps(_normalize_backend_url(backend_url) or backend_url_from_env(), ensure_ascii=False)};",
+        "if (backend) fetch(backend + '/api/codex-injection/extensions', { cache: 'no-store' })",
+        ".then((response) => response.ok ? response.json() : Promise.reject(new Error('extension status failed')))",
+        ".then((data) => {",
+        "  if (data.theme && data.theme.url) {",
+        "    const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = data.theme.url;",
+        "    link.dataset.cemLocalTheme = data.theme.id || 'theme'; document.head.appendChild(link); state.theme = link;",
+        "  }",
+        "  if (data.pet && data.pet.url) {",
+        "    const place = () => {",
+        "      if (state.pet && state.pet.isConnected) return;",
+        "      const composer = document.querySelector('textarea, [contenteditable=\"true\"], [data-testid*=\"composer\" i]');",
+        "      if (!composer) return;",
+        "      const image = document.createElement('img'); image.src = data.pet.url; image.alt = '';",
+        "      image.dataset.cemLocalPet = data.pet.id || 'pet';",
+        "      Object.assign(image.style, { position:'fixed', zIndex:'2147482500', width:'72px', maxHeight:'96px', objectFit:'contain', pointerEvents:'none' });",
+        "      const update = () => { const rect = composer.getBoundingClientRect(); image.style.left = Math.max(8, rect.right - 76) + 'px'; image.style.top = Math.max(8, rect.top - 76) + 'px'; };",
+        "      document.documentElement.appendChild(image); state.pet = image; state.resizeHandler = update; update(); window.addEventListener('resize', update, { passive:true });",
+        "    };",
+        "    place(); state.observer = new MutationObserver(place); state.observer.observe(document.documentElement, { childList:true, subtree:true });",
+        "  }",
+        "}).catch(() => {});",
+    ]
+    for item in scripts:
+        extension_id = str(item.get("id") or "script")
+        source = str(item.get("source") or "")
+        parts.extend([
+            f"try {{ /* local-script:{extension_id} */",
+            source,
+            f"\n}} catch (error) {{ console.error('Codex Enhanced Manager local script failed: {extension_id}', error); }}",
+        ])
+    parts.append("})();")
+    return "\n".join(parts)
+
+
+def _is_injectable_target(target: Dict[str, Any], backend_url: str = "") -> bool:
+    if not target.get("webSocketDebuggerUrl") or target.get("type") not in ("page", "webview"):
+        return False
+    title = str(target.get("title") or "")
+    url = str(target.get("url") or "")
+    combined = f"{title} {url}".lower()
+    excluded = (
+        "quick chat",
+        "quick-chat",
+        "devtools://",
+        "chrome-extension://",
+        "codex enhanced manager",
+        "/monitor",
+    )
+    if any(marker in combined for marker in excluded):
+        return False
+    normalized_backend = _normalize_backend_url(backend_url).lower()
+    if normalized_backend and normalized_backend in combined:
+        return False
+    return True
+
+
 # Global registry of active bridge listener threads per target ws_url
 _cem_bridge_threads: Dict[str, threading.Thread] = {}
 _cem_bridge_stop_events: Dict[str, threading.Event] = {}
@@ -1737,7 +1940,7 @@ def inject_codex_enhancements(
     backend_url: str = "",
     timeout_seconds: float = 24.0,
 ) -> Dict[str, Any]:
-    script = build_injection_script(backend_url)
+    script = build_injection_script(backend_url) + "\n" + _local_extension_script(backend_url)
     deadline = time.time() + max(float(timeout_seconds), 0.5)
     last_error = ""
     injected = 0
@@ -1747,10 +1950,7 @@ def inject_codex_enhancements(
     while time.time() < deadline:
         try:
             targets = discover_cdp_targets(port=port, timeout=1.2)
-            page_targets = [
-                target for target in targets
-                if target.get("webSocketDebuggerUrl") and target.get("type") in ("page", "webview")
-            ]
+            page_targets = [target for target in targets if _is_injectable_target(target, backend_url)]
             # Sort so targets whose title/url contain "codex" are tried first.
             page_targets.sort(key=lambda t: (
                 0 if "codex" in f"{t.get('title', '')} {t.get('url', '')}".lower() else 1,

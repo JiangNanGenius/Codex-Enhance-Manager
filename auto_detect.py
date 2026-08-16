@@ -18,10 +18,11 @@ Windows 平台特殊性：
 """
 import os
 import glob
+import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -31,8 +32,13 @@ def detect_codex_db() -> str:
     candidates = []
 
     # 1. ~/.codex/ 下的 state_*.sqlite
-    codex_home = Path.home() / ".codex"
+    codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser()
     if codex_home.exists():
+        preferred = [codex_home / "threads.db"]
+        preferred.extend(sorted((codex_home / "sqlite").glob("*.db"), key=lambda item: item.stat().st_mtime, reverse=True))
+        for candidate in preferred:
+            if candidate.is_file():
+                return str(candidate)
         candidates.extend(glob.glob(str(codex_home / "state_*.sqlite")))
 
     # 2. Windows: %LOCALAPPDATA%/OpenAI/Codex/
@@ -65,6 +71,30 @@ def detect_codex_db() -> str:
 
     valid.sort(key=extract_number, reverse=True)
     return valid[0]
+
+
+def discover_codex_databases() -> List[Dict[str, object]]:
+    """Return all known Codex SQLite candidates without opening or mutating them."""
+    roots = [Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser()]
+    for env_name in ("LOCALAPPDATA", "APPDATA"):
+        if os.environ.get(env_name):
+            roots.append(Path(os.environ[env_name]) / "OpenAI" / "Codex")
+    seen: set[Path] = set()
+    records: List[Dict[str, object]] = []
+    for root in roots:
+        candidates = [root / "threads.db", *root.glob("state_*.sqlite"), *(root / "sqlite").glob("*.db")]
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+                stat = resolved.stat()
+            except OSError:
+                continue
+            if resolved in seen or not resolved.is_file():
+                continue
+            seen.add(resolved)
+            records.append({"path": str(resolved), "size_bytes": stat.st_size, "modified_at": stat.st_mtime})
+    records.sort(key=lambda item: float(item.get("modified_at") or 0), reverse=True)
+    return records
 
 
 def detect_codex_desktop() -> str:
@@ -103,8 +133,14 @@ def detect_codex_cli() -> str:
         if os.path.isfile(direct_exe):
             return direct_exe
 
-    # 3. where codex (PATH search)
+    which = shutil.which("codex")
+    if which and os.path.isfile(which):
+        return which
+
+    # 3. where codex (Windows PATH search)
     try:
+        if os.name != "nt":
+            raise OSError("where.exe is Windows-only")
         result = subprocess.run(
             ["where", "codex"],
             capture_output=True, text=True, timeout=5, creationflags=CREATE_NO_WINDOW
@@ -182,7 +218,7 @@ def detect_codex_plus_plus() -> str:
 
 def detect_sessions_dir() -> str:
     """自动检测 Codex sessions 目录"""
-    codex_home = Path.home() / ".codex"
+    codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser()
 
     # 优先检测 sessions
     sessions_dir = codex_home / "sessions"
@@ -194,7 +230,7 @@ def detect_sessions_dir() -> str:
 
 def detect_archived_dir() -> str:
     """自动检测 Codex archived_sessions 目录"""
-    codex_home = Path.home() / ".codex"
+    codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser()
     archived_dir = codex_home / "archived_sessions"
     if archived_dir.is_dir():
         return str(archived_dir)
@@ -221,7 +257,7 @@ def read_codex_config() -> Dict:
     """
     from codex_config import load_config_toml
 
-    codex_home = Path.home() / ".codex"
+    codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser()
     config_path = codex_home / "config.toml"
 
     if not config_path.exists():

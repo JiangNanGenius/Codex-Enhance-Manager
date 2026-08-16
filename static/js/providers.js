@@ -1283,6 +1283,46 @@ function renderProviderModelDetailRow(provider, model, index, disabled = false, 
                     <input data-model-field="reasoning_effort_default" class="input mt-1 w-full" value="${escapeAttr(reasoningDefaultValue)}" placeholder="medium"${capabilityDisabledAttr}>
                 </div>
             </div>`}
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3 ${!effectiveCaps.text && effectiveCaps.images ? 'hidden' : ''}" data-llm-only-section>
+                <div>
+                    <label class="text-xs text-dark-400">上游模型 ID / Upstream model</label>
+                    <input data-model-field="upstream_model_id" class="input mt-1 w-full font-mono" value="${escapeAttr(model.upstream_model_id || '')}" placeholder="留空时使用模型 ID"${disabledAttr}>
+                </div>
+                <div>
+                    <label class="text-xs text-dark-400">路由别名 / Route aliases</label>
+                    <input data-model-field="route_aliases" class="input mt-1 w-full font-mono" value="${escapeAttr((model.route_aliases || []).join(', '))}" placeholder="alias-a, alias-b"${disabledAttr}>
+                </div>
+                <div>
+                    <label class="text-xs text-dark-400">自动压缩阈值 / Auto compact</label>
+                    <input data-model-field="auto_compact_token_limit" type="number" min="0" step="1000" class="input mt-1 w-full" value="${escapeAttr(model.auto_compact_token_limit || 0)}"${disabledAttr}>
+                </div>
+                <div>
+                    <label class="text-xs text-dark-400">图片处理 / Image handling</label>
+                    <select data-model-field="image_handling" class="input mt-1 w-full"${disabledAttr}>
+                        <option value="send_as_is" ${(model.image_handling || 'send_as_is') === 'send_as_is' ? 'selected' : ''}>原样发送</option>
+                        <option value="strip" ${model.image_handling === 'strip' ? 'selected' : ''}>移除图片</option>
+                        <option value="vlm" ${model.image_handling === 'vlm' ? 'selected' : ''}>VLM 分析</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-dark-400">VLM 供应商 ID</label>
+                    <input data-model-field="vlm_provider_id" class="input mt-1 w-full font-mono" value="${escapeAttr(model.vlm_provider_id || '')}" placeholder="provider-id"${disabledAttr}>
+                </div>
+                <div>
+                    <label class="text-xs text-dark-400">VLM 模型</label>
+                    <input data-model-field="vlm_model" class="input mt-1 w-full font-mono" value="${escapeAttr(model.vlm_model || '')}" placeholder="vision-model"${disabledAttr}>
+                </div>
+                <div>
+                    <label class="text-xs text-dark-400">服务档位 / Service tiers</label>
+                    <input data-model-field="service_tiers" class="input mt-1 w-full" value="${escapeAttr((model.service_tiers || []).join(', '))}" placeholder="default, flex, priority"${disabledAttr}>
+                </div>
+                <div>
+                    <label class="text-xs text-dark-400">默认服务档位</label>
+                    <input data-model-field="default_service_tier" class="input mt-1 w-full" value="${escapeAttr(model.default_service_tier || '')}" placeholder="default"${disabledAttr}>
+                </div>
+                <label class="flex items-center gap-2 text-xs text-dark-300"><input data-model-field="supports_search_tool" type="checkbox" ${model.supports_search_tool ? 'checked' : ''}${disabledAttr}>Web Search</label>
+                <label class="flex items-center gap-2 text-xs text-dark-300"><input data-model-field="use_responses_lite" type="checkbox" ${model.use_responses_lite ? 'checked' : ''}${disabledAttr}>Responses Lite</label>
+            </div>
             <div class="mt-3">
                 <div class="text-xs text-dark-500 mb-2">${escapeHtml(t('modelPricing'))} <span class="text-dark-600">— ${escapeHtml(t('modelPricingDesc'))}</span></div>
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
@@ -1390,8 +1430,7 @@ function onModelCapabilityChange(checkbox, capability) {
         el.classList.toggle('hidden', isImage);
     });
     // Toggle LLM-only sections
-    const llmSection = row.querySelector('[data-llm-only-section]');
-    if (llmSection) llmSection.classList.toggle('hidden', isImage);
+    row.querySelectorAll('[data-llm-only-section]').forEach(section => section.classList.toggle('hidden', isImage));
     const llmCheckboxes = row.querySelector('[data-llm-only-checkboxes]');
     if (llmCheckboxes) llmCheckboxes.classList.toggle('hidden', isImage);
     // Toggle image-only advanced settings
@@ -2654,6 +2693,16 @@ function readProviderModelsFromDetails(existingModels = [], provider = {}) {
             codex_display_name: codexDisplayName,
             codex_visible_id: codexVisibleId,
             context_window: parseInt(row.querySelector('[data-model-field="context_window"]')?.value || '0', 10) || 0,
+            upstream_model_id: String(row.querySelector('[data-model-field="upstream_model_id"]')?.value || '').trim(),
+            route_aliases: String(row.querySelector('[data-model-field="route_aliases"]')?.value || '').split(',').map(value => value.trim()).filter(Boolean),
+            auto_compact_token_limit: parseInt(row.querySelector('[data-model-field="auto_compact_token_limit"]')?.value || '0', 10) || 0,
+            image_handling: String(row.querySelector('[data-model-field="image_handling"]')?.value || 'send_as_is'),
+            vlm_provider_id: String(row.querySelector('[data-model-field="vlm_provider_id"]')?.value || '').trim(),
+            vlm_model: String(row.querySelector('[data-model-field="vlm_model"]')?.value || '').trim(),
+            supports_search_tool: Boolean(row.querySelector('[data-model-field="supports_search_tool"]')?.checked),
+            use_responses_lite: Boolean(row.querySelector('[data-model-field="use_responses_lite"]')?.checked),
+            service_tiers: String(row.querySelector('[data-model-field="service_tiers"]')?.value || '').split(',').map(value => value.trim()).filter(Boolean),
+            default_service_tier: String(row.querySelector('[data-model-field="default_service_tier"]')?.value || '').trim(),
             selected,
             catalog_hidden: hidden,
             primary,

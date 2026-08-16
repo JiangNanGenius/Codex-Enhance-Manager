@@ -73,7 +73,7 @@
             </div>
         </div>
         <!-- Nav -->
-        <nav class="flex-1 py-4 px-3 space-y-1">
+        <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
             <button onclick="navigateTo('overview')" data-nav="overview" class="nav-btn active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 13h6V4H4v9zm10 7h6V4h-6v16zM4 20h6v-4H4v4z"/></svg>
                 <span data-i18n="navOverview">总览</span>
@@ -101,6 +101,14 @@
             <button onclick="navigateTo('sessions')" data-nav="sessions" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                 <span data-i18n="navSessions">会话浏览</span>
+            </button>
+            <button onclick="navigateTo('extensions')" data-nav="extensions" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2v6m0 8v6M4.93 4.93l4.24 4.24m5.66 5.66 4.24 4.24M2 12h6m8 0h6M4.93 19.07l4.24-4.24m5.66-5.66 4.24-4.24"/></svg>
+                <span>脚本与主题</span>
+            </button>
+            <button onclick="navigateTo('workflows')" data-nav="workflows" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 3v12a3 3 0 003 3h9M6 7h8m0 0-3-3m3 3-3 3M18 14v7"/></svg>
+                <span>本地工作流</span>
             </button>
             <button onclick="navigateTo('sync')" data-nav="sync" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -349,6 +357,9 @@
                     <option value="title" data-i18n="title">标题</option>
                 </select>
                 <button onclick="loadSessions()" class="btn btn-primary" data-i18n="refresh">刷新</button>
+                <button onclick="syncSessionProviderMetadata()" class="btn btn-secondary">同步 Provider metadata</button>
+                <button id="batch-delete-sessions" onclick="batchDeleteSessions()" class="btn btn-secondary text-red-300" disabled>删除所选</button>
+                <button id="undo-delete-sessions" onclick="undoLastSessionDelete()" class="btn btn-secondary hidden">撤销删除</button>
             </div>
             <!-- Session Table -->
             <div class="card overflow-hidden">
@@ -356,6 +367,7 @@
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="text-dark-400 border-b border-dark-700 bg-dark-800/50">
+                                <th class="text-center py-3 px-2"><input id="select-all-sessions" type="checkbox" onchange="toggleAllSessionSelection(this.checked)"></th>
                                 <th class="text-left py-3 px-4" data-i18n="title">标题</th>
                                 <th class="text-left py-3 px-4" data-i18n="model">模型</th>
                                 <th class="text-left py-3 px-4" data-i18n="provider">提供商</th>
@@ -366,7 +378,7 @@
                             </tr>
                         </thead>
                         <tbody id="sessions-table-body">
-                            <tr><td colspan="7" class="text-center py-8 text-dark-400" data-i18n="loading">加载中...</td></tr>
+                            <tr><td colspan="8" class="text-center py-8 text-dark-400" data-i18n="loading">加载中...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1130,6 +1142,73 @@
                 </div>
             </div>
         </div>
+
+        <div id="page-extensions" class="page p-6 space-y-4">
+            <div class="card border-amber-700/40 bg-amber-950/15">
+                <h2 class="text-lg font-semibold text-white">本地脚本、主题与桌宠</h2>
+                <p class="text-sm text-amber-200 mt-2">启用的 JavaScript 会在 Codex 渲染进程中执行。仅导入你信任的本地文件；本项目不提供在线市场。</p>
+            </div>
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                <div class="card space-y-3">
+                    <h3 class="card-title">用户脚本 (.js)</h3>
+                    <input id="extension-script-file" type="file" accept=".js" class="input w-full">
+                    <div class="grid grid-cols-2 gap-2">
+                        <input id="extension-script-name" class="input" placeholder="名称（可选）">
+                        <input id="extension-script-version" class="input" placeholder="版本（可选）">
+                    </div>
+                    <button onclick="importLocalScript()" class="btn btn-primary">导入脚本</button>
+                    <div id="extension-scripts-list" class="space-y-2"></div>
+                </div>
+                <div class="card space-y-3">
+                    <h3 class="card-title">主题包 (.zip)</h3>
+                    <p class="text-xs text-dark-400">只允许 CSS、JSON 和图片；包内 JavaScript 会被拒绝。</p>
+                    <input id="extension-theme-file" type="file" accept=".zip" class="input w-full">
+                    <button onclick="importAssetPack('themes')" class="btn btn-primary">导入主题</button>
+                    <div id="extension-themes-list" class="space-y-2"></div>
+                </div>
+                <div class="card space-y-3">
+                    <h3 class="card-title">桌宠包 (.zip)</h3>
+                    <p class="text-xs text-dark-400">支持 PNG、JPEG、GIF、WebP、SVG 与 JSON 元数据。</p>
+                    <input id="extension-pet-file" type="file" accept=".zip" class="input w-full">
+                    <button onclick="importAssetPack('pets')" class="btn btn-primary">导入桌宠</button>
+                    <div id="extension-pets-list" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-workflows" class="page p-6 space-y-4">
+            <div class="card">
+                <h2 class="text-lg font-semibold text-white">本地工作流</h2>
+                <p class="text-sm text-dark-400 mt-2">只在你点击确认后执行 Git 操作；不会自动修改任何仓库。</p>
+                <div id="workflow-capabilities" class="mt-3 text-xs text-dark-300"></div>
+            </div>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div class="card space-y-3">
+                    <h3 class="card-title">Upstream worktree</h3>
+                    <input id="worktree-repository" class="input w-full" placeholder="仓库绝对路径">
+                    <input id="worktree-target" class="input w-full" placeholder="新 worktree 绝对路径">
+                    <div class="grid grid-cols-3 gap-2">
+                        <input id="worktree-remote" class="input" value="upstream" placeholder="remote">
+                        <input id="worktree-base" class="input" value="main" placeholder="base branch">
+                        <input id="worktree-branch" class="input" placeholder="new branch">
+                    </div>
+                    <div class="flex gap-2"><button onclick="previewWorktree()" class="btn btn-secondary">预览</button><button onclick="createWorktree()" class="btn btn-primary">确认并创建</button></div>
+                    <pre id="worktree-preview" class="preview-code min-h-[120px]"></pre>
+                </div>
+                <div class="card space-y-3">
+                    <h3 class="card-title">项目记录 / Zed Remote</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <select id="workflow-project-kind" class="input"><option value="local">Local</option><option value="zed_remote">Zed Remote</option></select>
+                        <input id="workflow-project-host" class="input" placeholder="远程主机（可选）">
+                    </div>
+                    <input id="workflow-project-name" class="input w-full" placeholder="项目名称">
+                    <input id="workflow-project-path" class="input w-full" placeholder="项目路径">
+                    <button onclick="recordWorkflowProject()" class="btn btn-primary">记录项目</button>
+                    <div id="workflow-project-list" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <!-- Toast notification -->
@@ -1149,5 +1228,7 @@
     <script src="js/amr.js"></script>
     <script src="js/settings.js"></script>
     <script src="js/diagnostics.js"></script>
+    <script src="js/extensions.js"></script>
+    <script src="js/workflows.js"></script>
 </body>
 </html>

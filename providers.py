@@ -53,7 +53,7 @@ from reasoning_policy import build_model_reasoning_effort_profile
 
 
 # Schema version：当数据结构发生不兼容变更时递增，用于未来迁移逻辑。
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 # 默认存储路径：用户文档目录下的 Codex Enhanced Manager/providers/providers.json。
 DEFAULT_STORE_PATH = app_data_path("providers", "providers.json")
 
@@ -706,7 +706,13 @@ class ProviderRegistry:
         store = _empty_store()
         store.update(raw if isinstance(raw, dict) else {})
         # 逐条 normalize：防御旧数据或 schema 升级后的字段缺失
+        try:
+            original_version = int(store.get("schema_version") or 0)
+        except (TypeError, ValueError):
+            original_version = 0
         store["providers"] = [normalize_provider(p) for p in store.get("providers", []) if isinstance(p, dict)]
+        if original_version < SCHEMA_VERSION:
+            self._save_store(store)
         return store
 
     def _save_store(self, store: Dict[str, Any]):
@@ -1039,6 +1045,15 @@ def normalize_model(data: Dict[str, Any]) -> Dict[str, Any]:
     context_window = _safe_int(data.get("context_window") or data.get("context") or 0)
     max_output_tokens = _safe_int(data.get("max_output_tokens") or data.get("maxTokens") or data.get("max_tokens") or 0)
     concurrency_limit = _safe_int(data.get("concurrency_limit") or data.get("concurrency") or 0)
+    auto_compact_token_limit = _safe_int(
+        data.get("auto_compact_token_limit")
+        or data.get("auto_compact_limit")
+        or data.get("compact_threshold")
+        or 0
+    )
+    image_handling = str(data.get("image_handling") or data.get("image_proxy_mode") or "send_as_is").strip().lower()
+    if image_handling not in {"send_as_is", "strip", "vlm"}:
+        image_handling = "send_as_is"
     catalog_hidden = bool(data.get("catalog_hidden", False))
     selected = bool(data.get("selected", True))
     primary = bool(data.get("primary", False))
@@ -1077,6 +1092,16 @@ def normalize_model(data: Dict[str, Any]) -> Dict[str, Any]:
         "pricing": data.get("pricing") if isinstance(data.get("pricing"), dict) else {},
         "tags": data.get("tags") if isinstance(data.get("tags"), list) else [],
         "aliases": normalize_string_list(data.get("aliases") or data.get("model_aliases")),
+        "route_aliases": normalize_string_list(data.get("route_aliases") or data.get("routing_aliases")),
+        "upstream_model_id": str(data.get("upstream_model_id") or data.get("upstream_model") or "").strip(),
+        "auto_compact_token_limit": max(auto_compact_token_limit, 0),
+        "image_handling": image_handling,
+        "vlm_provider_id": str(data.get("vlm_provider_id") or "").strip(),
+        "vlm_model": str(data.get("vlm_model") or "").strip(),
+        "supports_search_tool": bool(data.get("supports_search_tool", data.get("web_search", False))),
+        "use_responses_lite": bool(data.get("use_responses_lite", False)),
+        "service_tiers": normalize_string_list(data.get("service_tiers")),
+        "default_service_tier": str(data.get("default_service_tier") or "").strip(),
         "reasoning_default": data.get("reasoning_default", ""),
         "model_base_url": str(data.get("model_base_url") or "").strip(),
         "model_base_path": str(data.get("model_base_path") or "").strip(),

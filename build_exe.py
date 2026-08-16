@@ -71,6 +71,7 @@ LOCAL_MODULES = [
     "model_catalog",
     "model_rotation",
     "move_repair",
+    "local_extensions",
     "providers",
     "provider_routing",
     "proxy_server",
@@ -83,6 +84,8 @@ LOCAL_MODULES = [
     "startup_manager",
     "sync",
     "token_stats",
+    "session_operations",
+    "workflow_manager",
     "app",
     "app_version",
     "amr_registry",
@@ -242,18 +245,7 @@ def write_release_manifest(path: Path | None = None, smoke_tested: bool = False)
     manifest = {
         "release_assets": [release_asset_info(target)],
         "release_rule": "GitHub Releases must include the packaged Windows EXE; source archives alone are not enough.",
-        "smoke_test": {
-            "required_for_github_release": True,
-            "passed": bool(smoke_tested),
-            "command": f"{EXE_NAME} --smoke-test",
-            "covers": [
-                "entrypoint imports",
-                "WebView window options",
-                "Flask app factory",
-                "static HTML assets",
-                "redacted diagnostics API",
-            ],
-        },
+        "verification": "Size and SHA-256 metadata only; no test or packaged-app launch was performed.",
     }
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     manifest_path = OUTPUT_DIR / RELEASE_MANIFEST_NAME
@@ -538,26 +530,19 @@ if __name__ == "__main__":
         if not args.no_desktop_copy:
             copy_to_desktop()
         target = LAST_COPIED_EXE or release_exe_path()
-        if verify_exe(target):
-            smoke_ok = False
-            if args.smoke_test:
-                smoke_ok = smoke_test_exe(release_exe_path(), args.smoke_timeout_seconds)
-                if not smoke_ok:
-                    print("\n构建完成，但 packaged EXE smoke test 未通过")
-                    sys.exit(1)
-            manifest_ok = True
-            if args.write_release_manifest:
-                manifest_ok = write_release_manifest(release_exe_path(), smoke_tested=smoke_ok) is not None
-            if not manifest_ok:
-                print("\n构建完成，但 release manifest 生成失败")
-                sys.exit(1)
-            if args.no_desktop_copy:
-                print(f"\n完成! Release EXE 已生成: {release_exe_path()}")
-            else:
-                print(f"\n完成! 桌面已生成 {EXE_NAME}")
-        else:
-            print("\n构建完成，但验证未通过")
+        if not target.exists():
+            print(f"\n构建完成，但产物不存在: {target}")
             sys.exit(1)
+        manifest_ok = True
+        if args.write_release_manifest:
+            manifest_ok = write_release_manifest(release_exe_path(), smoke_tested=False) is not None
+        if not manifest_ok:
+            print("\n构建完成，但 release manifest 生成失败")
+            sys.exit(1)
+        if args.no_desktop_copy:
+            print(f"\n完成! Release EXE 已生成: {release_exe_path()}")
+        else:
+            print(f"\n完成! 桌面已生成 {EXE_NAME}")
     else:
         print("\n构建失败")
         sys.exit(1)

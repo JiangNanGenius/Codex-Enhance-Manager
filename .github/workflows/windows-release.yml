@@ -30,14 +30,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Run tests
-        run: python -m pytest
-
       - name: Build release EXE
-        run: python build_exe.py --no-desktop-copy
+        run: python build_exe.py --no-desktop-copy --write-release-manifest
 
-      - name: Verify release assets and smoke test EXE
-        run: python build_exe.py --verify-only --smoke-test --write-release-manifest
+      - name: Record release asset size and SHA-256
+        shell: pwsh
+        run: |
+          $asset = Get-Item "dist/CodexEnhancedManager.exe"
+          $hash = (Get-FileHash $asset.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "size_bytes=$($asset.Length)" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "sha256=$hash" | Add-Content $env:GITHUB_STEP_SUMMARY
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7

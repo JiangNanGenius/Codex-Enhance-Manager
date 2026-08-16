@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <img alt="Platform: Windows" src="https://img.shields.io/badge/Platform-Windows-2563eb.svg">
+  <img alt="Platform: Windows and Apple Silicon macOS" src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20arm64-2563eb.svg">
   <img alt="Local first" src="https://img.shields.io/badge/Local--first-by_default-0f766e.svg">
   <img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-334155.svg">
   <img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache--2.0-green.svg">
@@ -35,7 +35,7 @@
 
 Codex 最舒服的状态应该是：官方登录态还在，启动像原生一样顺，历史记录能看，用量能看，供应商和模型可以换，但不会把配置文件搞成一团。
 
-Codex Enhanced Manager 做的就是这件事：尽量不破坏 Codex 原生体验，把供应商、路由、智能路由、用量统计、备份恢复、配置修复和悬浮窗放进一个本地 Windows 桌面工具里。
+Codex Enhanced Manager 做的就是这件事：尽量不破坏 Codex 原生体验，把供应商、路由、智能路由、用量统计、备份恢复、配置修复和悬浮窗放进一个本地 Windows / Apple Silicon macOS 桌面工具里。
 
 所有配置、供应商、请求元数据、诊断包、备份和导出默认都留在本机。
 
@@ -92,19 +92,22 @@ Codex Enhanced Manager 做的就是这件事：尽量不破坏 Codex 原生体�
 ## 你会得到什么
 
 - 设置向导：Codex 路径、官方登录态、供应商、模型能力、路由、媒体 fallback、开机启动和保存检查。
-- 供应商管理：一个供应商可配置多个模型，支持 Header、`User-Agent`、模型别名、能力标签和媒体路由。
+- 供应商管理：支持供应商内单模型路由、独立上下文、自动压缩阈值、服务档位、Web Search / Responses Lite 元数据、图片策略和媒体路由。
 - 智能路由：管理下一个新会话的顺序、优先级、故障转移和能力筛选，不和密钥配置混在一起。
 - 用量统计：读取 Codex Token、官方登录态额度、缓存、代理请求元数据、本地费用估算，以及可用时的供应商官方扣费信息。
 - 悬浮窗：显示 Token、缓存、上下文、一小时用量、消耗速度、余额扣费速率、套餐额度百分比、透明度、托盘操作和快速切换。
-- 恢复工具：备份/恢复、配置模板修复、移动会话修复、脱敏诊断、更新检查和打包版 EXE 发布支持。
+- 本地导入：用户脚本、校验后的 CSS/图片主题与桌宠包；脚本默认停用，启用后会在 Codex 渲染进程执行。
+- 会话与工作流：多数据库发现、分页批选、删除前备份和撤销恢复，以及只由用户显式触发的 worktree / Zed Remote 项目记录。
+- 恢复工具：备份/恢复、配置模板修复、移动会话修复、脱敏诊断、更新检查、Windows EXE 和 Apple Silicon DMG 发布支持。
 
 ## 安全边界
 
-- 默认数据目录是 `Documents/Codex Enhanced Manager/`。
+- Windows 默认数据目录是 `Documents/Codex Enhanced Manager/`；macOS 是 `~/Library/Application Support/Codex Enhanced Manager/`。
 - API Key、Bearer Token 和敏感 Header 会在设置导出、诊断和日志里脱敏。
 - 本地代理默认生成高熵 bearer token；设置页只显示指纹。
 - 官方直连是“只切换”的状态，不进入本地代理路由，也不参与智能路由。
 - 删除/重置 Codex 配置和登录文件必须明确确认，并提示聊天记录有概率丢失。
+- 主题/桌宠包拒绝可执行 JavaScript、路径穿越、未知类型与超限文件；JavaScript 只能以本地用户脚本单独导入。
 
 ## 供应商额度资料
 
@@ -119,6 +122,12 @@ Codex Enhanced Manager 做的就是这件事：尽量不破坏 Codex 原生体�
 ```text
 CodexEnhancedManager.exe
 ```
+
+### macOS arm64 DMG
+
+下载 `CodexEnhancedManager-v2.3.0-macos-arm64.dmg`，打开后把应用拖入 Applications。仅支持 Apple Silicon，最低 macOS 12.0。
+
+该版本仅做 ad-hoc 签名，**没有 Apple 公证**。首次启动请按住 Control 点按应用并选择“打开”；若仍被 Gatekeeper 阻止，请到“系统设置 → 隐私与安全性”中对本应用选择“仍要打开”。操作前请先核对 Release 中的 SHA-256。
 
 ### 从源码运行
 
@@ -135,22 +144,20 @@ http://127.0.0.1:51234
 
 如果端口被占用，桌面启动器会自动切到后续可用端口。
 
-## 构建发布版
+## 发布打包
 
-```bash
-python -m pytest -q
-node --check static/js/app.js static/js/providers.js static/js/i18n.js static/js/monitor.js
-python build_exe.py --no-desktop-copy --smoke-test --write-release-manifest
-```
+GitHub Actions 负责构建平台资产。v2.3.0 按发布约定不执行测试、lint、语法检查、冒烟、手工启动或本地打包；CI 只构建并记录大小与 SHA-256。
 
-发布资产：
+预期发布资产：
 
 ```text
 dist/CodexEnhancedManager.exe
 dist/release-manifest.json
+dist/CodexEnhancedManager-v2.3.0-macos-arm64.dmg
+dist/macos-release-manifest.json
 ```
 
-每个 GitHub Release 都应该包含这两个文件。只有源码压缩包不算可用的 Windows 发布版。
+若任一打包任务失败，Release 可能暂时只有源码。静态逻辑审查不等于运行正确性验证。
 
 ## 本地文件
 
@@ -163,6 +170,12 @@ dist/release-manifest.json
 | `diagnostics/` | 脱敏诊断包。 |
 | `exports/` | 用户主动导出的文件。 |
 | `temp/` | 临时文件。 |
+| `extensions/` | 本地脚本、主题、桌宠、哈希与启用状态。 |
+| `workflows/` | 显式记录的本地/worktree/Zed Remote 项目。 |
+
+## 独立实现说明
+
+外部项目只用于研究用户可见行为和协议兼容性；本项目未并入 AGPL 源码或参考项目素材。详见 [THIRD_PARTY_REFERENCES.md](THIRD_PARTY_REFERENCES.md)。
 
 ## 许可证
 

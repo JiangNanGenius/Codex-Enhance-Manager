@@ -32,6 +32,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -48,7 +49,7 @@ from db import CodexDB
 from reader import read_messages, export_to_markdown, export_to_text, get_file_size_mb
 from backup import BackupManager
 from sync import full_sync, is_codex_running, kill_codex, start_codex, resolve_codex_home, CODEX_PLUS_PLUS_PATH
-from auto_detect import detect_all
+from auto_detect import detect_all, discover_codex_databases
 from token_stats import TokenStats
 from codex_rollout_usage import get_codex_rollout_cache_stats
 from providers import ProviderRegistry, DEFAULT_STORE_PATH, merge_provider_update, normalize_model
@@ -84,7 +85,7 @@ from domestic_responses import build_domestic_responses_probe_preview
 from diagnostics import DiagnosticsCollector
 from move_repair import MoveRepairManager
 from guardrails import codex_mutation_error_payload, has_codex_mutation_confirmation
-from app_paths import LEGACY_APP_DIR, LEGACY_CONFIG_FILE, app_data_dir, ensure_app_dirs, is_within
+from app_paths import LEGACY_APP_DIR, LEGACY_CONFIG_FILE, app_data_dir, app_data_path, ensure_app_dirs, is_within
 from currency import (
     build_rate_snapshot,
     convert_amount,
@@ -111,11 +112,21 @@ from provider_routing import provider_allows_local_routing
 from local_proxy_auth import preserve_redacted_local_proxy_token, redact_local_proxy_token
 from responses_adapter import models_url
 from model_catalog import UnifiedModelCatalog
+from local_extensions import DELETE_CONFIRMATION as EXTENSION_DELETE_CONFIRMATION, LocalExtensionManager
+from session_operations import DELETE_CONFIRMATION as SESSION_DELETE_CONFIRMATION, SessionOperationManager
+from workflow_manager import WORKTREE_CONFIRMATION, WorkflowManager
 
 
 def _bundle_root() -> Path:
     """Return the source root, or PyInstaller's extraction root in packaged mode."""
-    return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    if getattr(sys, "_MEIPASS", ""):
+        return Path(sys._MEIPASS)
+    resource_path = os.environ.get("RESOURCEPATH", "")
+    if resource_path:
+        return Path(resource_path)
+    if sys.platform == "darwin" and getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parents[1] / "Resources"
+    return Path(__file__).resolve().parent
 
 
 def _static_dir() -> Path:
@@ -1300,6 +1311,12 @@ def create_app() -> Flask:
     startup_manager = StartupManager()
     desktop_shortcut_manager = DesktopShortcutManager()
     update_manager = UpdateManager(current_version=APP_VERSION, repository_url=APP_REPOSITORY_URL)
+    extension_manager = LocalExtensionManager()
+    session_operation_manager = SessionOperationManager(
+        db,
+        rollout_resolver=lambda thread: _find_file_for_thread(thread, config),
+    )
+    workflow_manager = WorkflowManager()
 
     diagnostics_collector = DiagnosticsCollector(
         config=config,
@@ -2286,6 +2303,18 @@ def create_app() -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @app.route("/api/sessions/databases")
+    def list_session_databases():
+        """Discover every local Codex database candidate without switching the active DB."""
+        try:
+            active = str(config.get("db_path") or "")
+            databases = discover_codex_databases()
+            for item in databases:
+                item["active"] = bool(active and Path(str(item.get("path") or "")) == Path(active).expanduser())
+            return jsonify({"success": True, "databases": databases, "active_path": active})
+        except Exception as exc:
+            return jsonify({"success": False, "error": str(exc)}), 500
+
     @app.route("/api/sessions/<session_id>")
     def get_session(session_id):
         """获取会话详情（含消息内容）"""
@@ -2376,6 +2405,211 @@ def create_app() -> Flask:
                 return jsonify({"error": f"不支持的格式: {fmt}"}), 400
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/sessions/batch-delete", methods=["POST"])
+    def batch_delete_sessions():
+        """Delete selected DB rows after a recoverable local backup."""
+        try:
+            body = request.get_json(silent=True) or {}
+            result = session_operation_manager.delete_selected(
+                body.get("session_ids") if isinstance(body.get("session_ids"), list) else [],
+                str(body.get("confirmation") or ""),
+            )
+            return jsonify(result), 200 if result.get("success") else 207
+        except ValueError as exc:
+            return jsonify({
+                "success": False,
+                "error": str(exc),
+                "required_confirmation": SESSION_DELETE_CONFIRMATION,
+            }), 400
+        except Exception as exc:
+            return jsonify({"success": False, "error": str(exc)}), 500
+
+    @app.route("/api/sessions/undo-delete", methods=["POST"])
+    def undo_delete_sessions():
+        try:
+            body = request.get_json(silent=True) or {}
+            result = session_operation_manager.undo(str(body.get("operation_id") or ""))
+            return jsonify(result), 200 if result.get("success") else 207
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"success": False, "error": str(exc)}), 500
+
+    @app.route("/api/sessions/provider-metadata/sync", methods=["POST"])
+    def sync_session_provider_metadata():
+        """Fill missing session provider ids from unique enabled local model routes."""
+        try:
+            payload = _provider_payload(include_secrets=False)
+            candidates: Dict[str, set[str]] = {}
+            for provider in payload.get("providers", []):
+                if not isinstance(provider, dict) or not provider.get("enabled", True):
+                    continue
+                provider_id = str(provider.get("id") or "").strip()
+                for model in provider.get("models", []):
+                    if not isinstance(model, dict) or not model.get("enabled", True):
+                        continue
+                    names = [model.get("id"), model.get("upstream_model_id"), model.get("codex_visible_id")]
+                    names.extend(model.get("aliases") if isinstance(model.get("aliases"), list) else [])
+                    names.extend(model.get("route_aliases") if isinstance(model.get("route_aliases"), list) else [])
+                    for name in names:
+                        normalized = str(name or "").strip()
+                        if normalized:
+                            candidates.setdefault(normalized, set()).add(provider_id)
+            mapping: Dict[str, str] = {}
+            for name, provider_ids in candidates.items():
+                if len(provider_ids) != 1:
+                    continue
+                provider_id = next(iter(provider_ids))
+                if provider_id:
+                    mapping[name] = provider_id
+            result = db.sync_missing_provider_metadata(mapping)
+            return jsonify({"success": True, **result, "ambiguous_models": sum(1 for ids in candidates.values() if len(ids) > 1)})
+        except Exception as exc:
+            return jsonify({"success": False, "error": str(exc)}), 500
+
+    def _temporary_uploaded_extension(allowed_suffixes: set[str]) -> tuple[Path, bool]:
+        uploaded = request.files.get("file")
+        if uploaded and uploaded.filename:
+            suffix = Path(uploaded.filename).suffix.lower()
+            if suffix not in allowed_suffixes:
+                raise ValueError(f"Unsupported uploaded file type: {suffix or '(none)'}")
+            temp_dir = app_data_path("temp", "extension-imports")
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            descriptor, temp_name = tempfile.mkstemp(prefix="upload-", suffix=suffix, dir=str(temp_dir))
+            os.close(descriptor)
+            uploaded.save(temp_name)
+            return Path(temp_name), True
+        body = request.get_json(silent=True) or {}
+        raw_source = str(body.get("path") or "").strip()
+        if not raw_source:
+            raise ValueError("A local file or path is required.")
+        source = Path(raw_source).expanduser()
+        return source, False
+
+    # ─────────────── Local extension API ───────────────
+
+    @app.route("/api/extensions/scripts")
+    def list_local_scripts():
+        return jsonify({"success": True, "scripts": extension_manager.list_scripts(), "online_market": False})
+
+    @app.route("/api/extensions/scripts/import", methods=["POST"])
+    def import_local_script():
+        temporary = False
+        source = None
+        try:
+            source, temporary = _temporary_uploaded_extension({".js"})
+            body = request.form if request.files else (request.get_json(silent=True) or {})
+            record = extension_manager.import_script(
+                source,
+                name=str(body.get("name") or ""),
+                version=str(body.get("version") or ""),
+            )
+            return jsonify({"success": True, "script": record, "warning": "Enabled scripts execute inside the Codex renderer."})
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"success": False, "error": str(exc)}), 500
+        finally:
+            if temporary and source:
+                Path(source).unlink(missing_ok=True)
+
+    @app.route("/api/extensions/scripts/<extension_id>/enabled", methods=["POST"])
+    def set_local_script_enabled(extension_id):
+        try:
+            body = request.get_json(silent=True) or {}
+            record = extension_manager.set_script_enabled(extension_id, _coerce_bool(body.get("enabled"), False))
+            return jsonify({"success": True, "script": record, "restart_required": True})
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 404
+
+    @app.route("/api/extensions/scripts/<extension_id>", methods=["DELETE"])
+    def delete_local_script(extension_id):
+        try:
+            body = request.get_json(silent=True) or {}
+            return jsonify(extension_manager.delete(
+                extension_id,
+                kind="scripts",
+                confirmation=str(body.get("confirmation") or ""),
+            ))
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc), "required_confirmation": EXTENSION_DELETE_CONFIRMATION}), 400
+
+    @app.route("/api/extensions/<kind>")
+    def list_local_asset_packs(kind):
+        try:
+            normalized = "themes" if kind in {"theme", "themes"} else "pets" if kind in {"pet", "pets"} else ""
+            if not normalized:
+                raise ValueError("Extension kind must be themes or pets.")
+            return jsonify({"success": True, normalized: extension_manager.list_asset_packs(normalized)})
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+
+    @app.route("/api/extensions/<kind>/import", methods=["POST"])
+    def import_local_asset_pack(kind):
+        temporary = False
+        source = None
+        try:
+            normalized = "themes" if kind in {"theme", "themes"} else "pets" if kind in {"pet", "pets"} else ""
+            if not normalized:
+                raise ValueError("Extension kind must be themes or pets.")
+            source, temporary = _temporary_uploaded_extension({".zip"})
+            record = extension_manager.import_asset_pack(source, kind=normalized)
+            return jsonify({"success": True, "extension": record, "restart_required": True})
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"success": False, "error": str(exc)}), 500
+        finally:
+            if temporary and source:
+                Path(source).unlink(missing_ok=True)
+
+    @app.route("/api/extensions/<kind>/<extension_id>/enabled", methods=["POST"])
+    def set_local_asset_pack_enabled(kind, extension_id):
+        try:
+            body = request.get_json(silent=True) or {}
+            record = extension_manager.set_asset_pack_enabled(
+                extension_id,
+                _coerce_bool(body.get("enabled"), False),
+                kind=kind,
+            )
+            return jsonify({"success": True, "extension": record, "restart_required": True})
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+
+    @app.route("/api/extensions/<kind>/<extension_id>", methods=["DELETE"])
+    def delete_local_asset_pack(kind, extension_id):
+        try:
+            body = request.get_json(silent=True) or {}
+            return jsonify(extension_manager.delete(
+                extension_id,
+                kind=kind,
+                confirmation=str(body.get("confirmation") or ""),
+            ))
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc), "required_confirmation": EXTENSION_DELETE_CONFIRMATION}), 400
+
+    @app.route("/api/extensions/assets/<kind>/<extension_id>/<path:relative_path>")
+    def local_extension_asset(kind, extension_id, relative_path):
+        try:
+            target = extension_manager.resolve_asset(kind, extension_id, relative_path)
+            return send_from_directory(str(target.parent), target.name)
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 404
+
+    @app.route("/api/codex-injection/extensions")
+    def codex_injection_extensions():
+        runtime = extension_manager.enabled_asset_runtime()
+        for kind in ("theme", "pet"):
+            item = runtime.get(kind)
+            if not item:
+                continue
+            plural = f"{kind}s"
+            item["url"] = (
+                f"{_current_backend_url()}/api/extensions/assets/{plural}/"
+                f"{item['id']}/{item['relative_path']}"
+            )
+        return jsonify({"success": True, **runtime})
 
     # ─────────────── Token 统计 API ───────────────
 
@@ -3676,6 +3910,10 @@ def create_app() -> Flask:
                     "codex_zh_cn_enhance_enabled",
                     "plugin_unlock_enabled",
                     "official_quota_enabled",
+                    "codex_paste_fix_enabled",
+                    "codex_plugin_auto_expand_enabled",
+                    "codex_thread_id_enabled",
+                    "codex_stepwise_enabled",
                 }
                 for key in allowed:
                     if key in body:
@@ -3762,6 +4000,14 @@ def create_app() -> Flask:
                 "plugin_unlock_enabled": bool(config.get("plugin_unlock_enabled", False)) and auth_mode != "official_oauth",
                 "plugin_unlock_forced_off": auth_mode == "official_oauth",
                 "official_quota_enabled": _coerce_bool(config.get("official_quota_enabled", True), True),
+                "codex_paste_fix_enabled": _coerce_bool(config.get("codex_paste_fix_enabled", True), True),
+                "codex_plugin_auto_expand_enabled": _coerce_bool(config.get("codex_plugin_auto_expand_enabled", True), True),
+                "codex_thread_id_enabled": _coerce_bool(config.get("codex_thread_id_enabled", True), True),
+                "codex_stepwise_enabled": _coerce_bool(config.get("codex_stepwise_enabled", False), False),
+                "enable_conversation_width": _coerce_bool(config.get("enable_conversation_width", True), True),
+                "conversation_width": str(config.get("conversation_width", "default") or "default"),
+                "enable_scroll_restore": _coerce_bool(config.get("enable_scroll_restore", True), True),
+                "enable_service_tier": _coerce_bool(config.get("enable_service_tier", False), False),
                 "codex_last_start_mode": str(config.get("codex_last_start_mode", "") or ""),
             }
             return jsonify({
@@ -4530,6 +4776,14 @@ def create_app() -> Flask:
             "official_quota_enabled": _coerce_bool(config.get("official_quota_enabled", True), True),
             "official_usage_visible": official_usage_visible,
             "hide_official_usage_alert": not official_usage_visible,
+            "codex_paste_fix_enabled": _coerce_bool(config.get("codex_paste_fix_enabled", True), True),
+            "codex_plugin_auto_expand_enabled": _coerce_bool(config.get("codex_plugin_auto_expand_enabled", True), True),
+            "codex_thread_id_enabled": _coerce_bool(config.get("codex_thread_id_enabled", True), True),
+            "codex_stepwise_enabled": _coerce_bool(config.get("codex_stepwise_enabled", False), False),
+            "enable_conversation_width": _coerce_bool(config.get("enable_conversation_width", True), True),
+            "conversation_width": str(config.get("conversation_width", "default") or "default"),
+            "enable_scroll_restore": _coerce_bool(config.get("enable_scroll_restore", True), True),
+            "enable_service_tier": _coerce_bool(config.get("enable_service_tier", False), False),
             "official_focus_provider": _provider_focus_is_official_login(provider_payload),
             "third_party_focus_provider": _provider_focus_uses_other_api(provider_payload),
             "focused_provider_id": str(provider_payload.get("focus_provider_id") or "") if isinstance(provider_payload, dict) else "",
@@ -4653,6 +4907,44 @@ def create_app() -> Flask:
             return jsonify(result)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    # ─────────────── Local workflow API ───────────────
+
+    @app.route("/api/platform/capabilities")
+    def platform_capabilities():
+        return jsonify({"success": True, **workflow_manager.platform_capabilities()})
+
+    @app.route("/api/workflows/worktrees/preview", methods=["POST"])
+    def preview_upstream_worktree():
+        try:
+            return jsonify(workflow_manager.preview_worktree(request.get_json(silent=True) or {}))
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+
+    @app.route("/api/workflows/worktrees", methods=["POST"])
+    def create_upstream_worktree():
+        try:
+            body = request.get_json(silent=True) or {}
+            result = workflow_manager.create_worktree(body, str(body.get("confirmation") or ""))
+            return jsonify(result), 200 if result.get("success") else 409
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc), "required_confirmation": WORKTREE_CONFIRMATION}), 400
+        except Exception as exc:
+            return jsonify({"success": False, "error": str(exc)}), 500
+
+    @app.route("/api/workflows/projects", methods=["GET", "POST"])
+    def workflow_projects():
+        try:
+            if request.method == "GET":
+                return jsonify({"success": True, "projects": workflow_manager.list_projects()})
+            record = workflow_manager.record_project(request.get_json(silent=True) or {})
+            return jsonify({"success": True, "project": record})
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+
+    @app.route("/api/workflows/projects/<project_id>", methods=["DELETE"])
+    def delete_workflow_project(project_id):
+        return jsonify(workflow_manager.delete_project(project_id))
 
     # ─────────────── 自动检测 API ───────────────
 

@@ -7,6 +7,8 @@ let sessionPage = 0;
 let sessionTotal = 0;
 let sessionPageSize = 50;
 let currentSessionId = '';
+let selectedSessionIds = new Set();
+let lastSessionDeleteOperation = '';
 
 function resetSessionsAndLoad() {
     sessionPage = 0;
@@ -46,7 +48,7 @@ function renderSessionTable(sessions) {
     if (!tbody) return;
 
     if (!sessions || sessions.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-dark-400">' + t('noSessions') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-dark-400">' + t('noSessions') + '</td></tr>';
         return;
     }
 
@@ -60,6 +62,7 @@ function renderSessionTable(sessions) {
 
         return `
             <tr class="cursor-pointer group" onclick="openSessionDetail('${s.id}')">
+                <td class="py-3 px-2 text-center"><input type="checkbox" data-session-select value="${escapeAttr(s.id)}" ${selectedSessionIds.has(String(s.id)) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSessionSelection('${escapeAttr(s.id)}', this.checked)"></td>
                 <td class="py-3 px-4">
                     <div class="text-sm text-white group-hover:text-accent-400 transition truncate max-w-xs">${title}</div>
                 </td>
@@ -78,6 +81,62 @@ function renderSessionTable(sessions) {
             </tr>
         `;
     }).join('');
+    updateSessionSelectionControls();
+}
+
+function toggleSessionSelection(id, selected) {
+    if (selected) selectedSessionIds.add(String(id)); else selectedSessionIds.delete(String(id));
+    updateSessionSelectionControls();
+}
+
+function toggleAllSessionSelection(selected) {
+    document.querySelectorAll('[data-session-select]').forEach(input => {
+        input.checked = selected;
+        toggleSessionSelection(input.value, selected);
+    });
+}
+
+function updateSessionSelectionControls() {
+    const button = document.getElementById('batch-delete-sessions');
+    if (button) {
+        button.disabled = selectedSessionIds.size === 0;
+        button.textContent = selectedSessionIds.size ? `删除所选 (${selectedSessionIds.size})` : '删除所选';
+    }
+    const all = document.getElementById('select-all-sessions');
+    const visible = Array.from(document.querySelectorAll('[data-session-select]'));
+    if (all) all.checked = visible.length > 0 && visible.every(input => input.checked);
+}
+
+async function batchDeleteSessions() {
+    if (!selectedSessionIds.size || !window.confirm(`将先备份，再删除所选 ${selectedSessionIds.size} 个会话及其本地记录。是否继续？`)) return;
+    try {
+        const result = await api('/api/sessions/batch-delete', { method: 'POST', body: JSON.stringify({ session_ids: Array.from(selectedSessionIds), confirmation: 'DELETE_SELECTED_SESSIONS' }) });
+        lastSessionDeleteOperation = result.operation_id || '';
+        selectedSessionIds.clear();
+        const undo = document.getElementById('undo-delete-sessions');
+        if (undo) undo.classList.toggle('hidden', !lastSessionDeleteOperation);
+        showToast(`已删除 ${result.deleted?.length || 0} 个会话，备份可撤销`, result.failed?.length ? 'warning' : 'success');
+        loadSessions();
+    } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function undoLastSessionDelete() {
+    if (!lastSessionDeleteOperation) return;
+    try {
+        const result = await api('/api/sessions/undo-delete', { method: 'POST', body: JSON.stringify({ operation_id: lastSessionDeleteOperation }) });
+        showToast(`已恢复 ${result.restored?.length || 0} 个会话`, result.failed?.length ? 'warning' : 'success');
+        lastSessionDeleteOperation = '';
+        document.getElementById('undo-delete-sessions')?.classList.add('hidden');
+        loadSessions();
+    } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function syncSessionProviderMetadata() {
+    try {
+        const result = await api('/api/sessions/provider-metadata/sync', { method: 'POST', body: '{}' });
+        showToast(`已补全 ${result.updated || 0} 条 Provider metadata`, 'success');
+        loadSessions();
+    } catch (error) { showToast(error.message, 'error'); }
 }
 
 function renderSessionPagination() {
