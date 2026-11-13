@@ -1770,7 +1770,7 @@ def create_app() -> Flask:
             effective = _effective_codex_settings(mgr.read_config(), mgr.read_auth())
         except Exception as exc:
             diagnostics_collector.record_error("history_sync.official_target", str(exc))
-            effective = {"model_provider": "openai", "model": "gpt-5.6-sol"}
+            effective = {"model_provider": "openai", "model": "gpt-6.1-sol"}
         target_provider = str(effective.get("model_provider") or "openai")
         if target_provider == "codex_enhance_manager":
             target_provider = "openai"
